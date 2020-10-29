@@ -1135,6 +1135,10 @@ esp_err_t wifi_prov_mgr_configure_sta(wifi_config_t *wifi_cfg)
         RELEASE_LOCK(prov_ctx_lock);
         return ESP_FAIL;
     }
+    if(prov_ctx->prov_state == WIFI_PROV_STATE_FAIL) {
+        // We failed with the previous credentials, let's try again with these.
+        prov_ctx->prov_state = WIFI_PROV_STATE_STARTED;
+    }
     if (prov_ctx->prov_state >= WIFI_PROV_STATE_CRED_RECV) {
         ESP_LOGE(TAG, "Wi-Fi credentials already received by provisioning app");
         RELEASE_LOCK(prov_ctx_lock);
