@@ -645,10 +645,11 @@ static void prvAddNewTaskToReadyList( TCB_t *pxNewTCB, TaskFunction_t pxTaskCode
 */
 void taskYIELD_OTHER_CORE( BaseType_t xCoreID, UBaseType_t uxPriority )
 {
-	TCB_t *curTCB = pxCurrentTCB[xCoreID];
+	TCB_t *curTCB;
 	BaseType_t i;
 
 	if (xCoreID != tskNO_AFFINITY) {
+		curTCB = pxCurrentTCB[xCoreID];
 		if ( curTCB->uxPriority < uxPriority ) {	// NOLINT(clang-analyzer-core.NullDereference) IDF-685
 			vPortYieldOtherCore( xCoreID );
 		}
@@ -5057,26 +5058,6 @@ TickType_t uxReturn;
 		}
 		pxTaskSnapshotArray[ *uxTask ].pxTCB = pxTCB;
 		pxTaskSnapshotArray[ *uxTask ].pxTopOfStack = (StackType_t *)pxTCB->pxTopOfStack;
-		pxTaskSnapshotArray[ *uxTask ].eState = eTaskGetState(pxTCB);
-		
-		if(pxTaskSnapshotArray[ *uxTask ].eState == eRunning) 
-		{
-			BaseType_t xCoreId = xPortGetCoreID();
-			/* task is running, let's find in which core it is located */
-			if(pxTCB == pxCurrentTCB[xCoreId])
-			{
-				pxTaskSnapshotArray[ *uxTask ].xCpuId = xCoreId;
-			}
-			else 
-			{
-				pxTaskSnapshotArray[ *uxTask ].xCpuId = !xCoreId;
-			}		
-		} 
-		else 
-		{
-			pxTaskSnapshotArray[ *uxTask ].xCpuId = -1;	
-		}
-		
 		#if( portSTACK_GROWTH < 0 )
 		{
 			pxTaskSnapshotArray[ *uxTask ].pxEndOfStack = pxTCB->pxEndOfStack;

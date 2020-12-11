@@ -16,7 +16,9 @@ ESP-LyraT-8311A 扩展板有多种使用方式。该应用程序包括语音用�
 
 .. figure:: https://dl.espressif.com/dl/schematics/pictures/esp-lyrat-8311a-v1.2-3d.png
     :align: center
-    :scale: 90%
+    :width: 2545px
+    :height: 1786px
+    :scale: 30%
     :alt: ESP-LyraT-8311A
     :figclass: align-center
 
@@ -41,7 +43,9 @@ ESP-LyraT-8311A 主要用于音频应用，但也可根据实际需求用作它�
 
 .. figure:: https://dl.espressif.com/dl/schematics/pictures/esp-lyrat-8311a-v1.2-layout-front.png
     :align: center
-    :scale: 90%
+    :width: 934px
+    :height: 565px
+    :scale: 80%
     :alt: ESP-LyraT-8311A - 正面
     :figclass: align-center
 
@@ -49,7 +53,7 @@ ESP-LyraT-8311A 主要用于音频应用，但也可根据实际需求用作它�
 
 下表将从图片右上角开始，以顺时针顺序介绍上图中的主要组件。
 
-**保留**表示该功能可用，但当前版本的套件并未启用该功能。
+**保留** 表示该功能可用，但当前版本的套件并未启用该功能。
 
 
 .. list-table::
@@ -109,7 +113,7 @@ ESP-LyraT-8311A 上电前，请首先确认开发板完好无损。
 请根据您的具体应用，参考以下部分：
 
 * ESP-ADF（乐鑫音频开发框架）的用户，请前往 `ESP-ADF 入门指南 <https://docs.espressif.com/projects/esp-adf/en/latest/get-started/index.html#about-esp-adf>`_。
-* ESP32-IDF（乐鑫 IoT 开发框架）的用户，请前往 ESP32-S2-Kaluga-1 开发套件用户指南的 :ref:`user-guide-esp32-s2-kaluga-1-kit-software-setup` 章节。
+* ESP32-IDF（乐鑫 IoT 开发框架）的用户，请前往 ESP32-S2-Kaluga-1 开发套件用户指南的 :ref:`user-guide-esp32-s2-kaluga-1-kit-v1.2-software-setup` 章节。
 
 
 硬件参考

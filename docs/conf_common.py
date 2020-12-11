@@ -58,6 +58,10 @@ extensions = ['breathe',
               'extensions.toctree_filter',
               'extensions.list_filter',
 
+              # Note: order is important here, events must
+              # be registered by one extension before they can be
+              # connected to another extension
+
               'idf_extensions.include_build_file',
               'idf_extensions.link_roles',
               'idf_extensions.build_system',
@@ -65,11 +69,11 @@ extensions = ['breathe',
               'idf_extensions.gen_toolchain_links',
               'idf_extensions.gen_version_specific_includes',
               'idf_extensions.kconfig_reference',
+              'idf_extensions.gen_defines',
               'idf_extensions.run_doxygen',
               'idf_extensions.gen_idf_tools_links',
               'idf_extensions.format_idf_target',
               'idf_extensions.latex_builder',
-              'idf_extensions.gen_defines',
               'idf_extensions.exclude_docs',
 
               # from https://github.com/pfalcon/sphinx_selective_exclude
@@ -125,7 +129,7 @@ print('Version: {0}  Release: {1}'.format(version, release))
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
-exclude_patterns = ['**/inc/**', '_static', '**/_build']
+exclude_patterns = ['**/inc/**', '_static/', '_build/**']
 
 
 BT_DOCS = ['api-guides/blufi.rst',
@@ -148,17 +152,14 @@ LEGACY_DOCS = ['api-guides/build-system-legacy.rst',
                'get-started-legacy/**']
 
 ESP32_DOCS = ['api-guides/ulp_instruction_set.rst',
-              'api-guides/jtag-debugging/configure-wrover.rst',
               'api-reference/system/himem.rst',
               'api-guides/RF_calibration.rst',
               'api-reference/system/ipc.rst',
               'security/secure-boot-v1.rst',
-              'security/secure-boot-v2.rst',
               'api-reference/peripherals/secure_element.rst',
               'hw-reference/esp32/**'] + LEGACY_DOCS
 
-ESP32S2_DOCS = ['esp32s2.rst',
-                'hw-reference/esp32s2/**',
+ESP32S2_DOCS = ['hw-reference/esp32s2/**',
                 'api-guides/ulps2_instruction_set.rst',
                 'api-guides/dfu.rst',
                 'api-reference/peripherals/hmac.rst',

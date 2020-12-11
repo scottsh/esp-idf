@@ -3,6 +3,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "soc/cpu.h"
 #include "soc/rtc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "panic_internal.h"
@@ -83,6 +84,11 @@ void IRAM_ATTR esp_restart(void)
 uint32_t esp_get_free_heap_size( void )
 {
     return heap_caps_get_free_size( MALLOC_CAP_DEFAULT );
+}
+
+uint32_t esp_get_free_internal_heap_size( void )
+{
+    return heap_caps_get_free_size( MALLOC_CAP_8BIT | MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL );
 }
 
 uint32_t esp_get_minimum_free_heap_size( void )

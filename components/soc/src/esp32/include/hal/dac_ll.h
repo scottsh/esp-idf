@@ -69,6 +69,18 @@ static inline void dac_ll_update_output_value(dac_channel_t channel, uint8_t val
     }
 }
 
+/**
+ * Enable/disable the synchronization operation function of ADC1 and DAC.
+ *
+ * @note  If enabled(default), ADC RTC controller sampling will cause the DAC channel output voltage.
+ *
+ * @param enable Enable or disable adc and dac synchronization function.
+ */
+static inline void dac_ll_rtc_sync_by_adc(bool enable)
+{
+    SENS.sar_meas_ctrl2.sar1_dac_xpd_fsm = enable;
+}
+
 /************************************/
 /*  DAC cosine wave generator API's */
 /************************************/
@@ -172,24 +184,14 @@ static inline void dac_ll_cw_set_dc_offset(dac_channel_t channel, int8_t offset)
 /*           DAC DMA API's          */
 /************************************/
 /**
- * Enable DAC output data from I2S DMA.
+ * Enable/disable DAC output data from I2S DMA.
  * I2S_CLK connect to DAC_CLK, I2S_DATA_OUT connect to DAC_DATA.
  */
-static inline void dac_ll_dma_enable(void)
+static inline void dac_ll_digi_enable_dma(bool enable)
 {
-    SENS.sar_dac_ctrl1.dac_dig_force = 1;
-    SENS.sar_dac_ctrl1.dac_clk_inv = 1;
+    SENS.sar_dac_ctrl1.dac_dig_force = enable;
+    SENS.sar_dac_ctrl1.dac_clk_inv = enable;
 }
-
-/**
- * Disable DAC output data from I2S DMA.
- */
-static inline void dac_ll_dma_disable(void)
-{
-    SENS.sar_dac_ctrl1.dac_dig_force = 0;
-    SENS.sar_dac_ctrl1.dac_clk_inv = 0;
-}
-
 
 #ifdef __cplusplus
 }
