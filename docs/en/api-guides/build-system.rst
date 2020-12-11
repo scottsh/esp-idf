@@ -89,6 +89,12 @@ Multiple ``idf.py`` commands can be combined into one. For example, ``idf.py -p 
 
 For commands that are not known to ``idf.py`` an attempt to execute them as a build system target will be made.
 
+The command ``idf.py`` supports `shell autocompletion <https://click.palletsprojects.com/bashcomplete/>`_ for bash, zsh and fish shells.
+In order to make `shell autocompletion <https://click.palletsprojects.com/bashcomplete/>`_ supported, please make sure you have at least Python 3.5 and `click <https://click.palletsprojects.com/>`_ 7.1 or newer (:ref:`see also <get-started-get-prerequisites>`).
+To enable autocompletion for ``idf.py`` use the ``export`` command (:ref:`see this <get-started-export>`).
+Autocompletion is initiated by pressing the TAB key. 
+Type "idf.py -" and press the TAB key to autocomplete options. The autocomplete support for PowerShell is planned in the future.
+
 .. note:: The environment variables ``ESPPORT`` and ``ESPBAUD`` can be used to set default values for the ``-p`` and ``-b`` options, respectively. Providing these options on the command line overrides the default.
 
 .. _idf.py-size:
@@ -101,6 +107,7 @@ Advanced Commands
 - ``idf.py -p PORT erase_flash`` will use esptool.py to erase the target's entire flash chip.
 - ``idf.py size`` prints some size information about the app. ``size-components`` and ``size-files`` are similar commands which print more detailed per-component or per-source-file information, respectively. If you define variable ``-DOUTPUT_JSON=1`` when running CMake (or ``idf.py``), the output will be formatted as JSON not as human readable text.
 - ``idf.py reconfigure`` re-runs CMake_ even if it doesn't seem to need re-running. This isn't necessary during normal usage, but can be useful after adding/removing files from the source tree, or when modifying CMake cache variables. For example, ``idf.py -DNAME='VALUE' reconfigure`` can be used to set variable ``NAME`` in CMake cache to value ``VALUE``.
+- ``idf.py python-clean`` deletes generated Python byte code from the IDF directory which may cause issues when switching between IDF and Python versions. It is advised to run this target after switching versions of Python.
 
 The order of multiple ``idf.py`` commands on the same invocation is not important, they will automatically be executed in the correct order for everything to take effect (ie building before flashing, erasing before flashing, etc.).
 
@@ -113,8 +120,23 @@ Here is a list of some useful options:
 - ``-B <dir>`` allows overriding the build directory from the default ``build`` subdirectory of the project directory.
 - ``--ccache`` flag can be used to enable CCache_ when compiling source files, if the CCache_ tool is installed. This can dramatically reduce some build times.
 
-Note that some older versions of CCache may exhibit bugs on some platforms, so if files are not rebuilt as expected then try disabling ccache and build again. CCache can be enabled by default by setting the ``IDF_ENABLE_CCACHE`` environment variable to a non-zero value.
+Note that some older versions of CCache may exhibit bugs on some platforms, so if files are not rebuilt as expected then try disabling ccache and build again. CCache can be enabled by default by setting the ``IDF_CCACHE_ENABLE`` environment variable to a non-zero value.
 - ``-v`` flag causes both ``idf.py`` and the build system to produce verbose build output. This can be useful for debugging build problems.
+- ``--cmake-warn-uninitialized`` (or ``-w``) will cause CMake to print uninitialized variable warnings inside the project directory (not for directories not found inside the project directory). This only controls CMake variable warnings inside CMake itself, not other types of build warnings. This option can also be set permanently by setting the ``IDF_CMAKE_WARN_UNINITIALIZED`` environment variable to a non-zero value.
+
+
+Start a new project
+-------------------
+
+Use the command ``idf.py create-project`` for starting a new project. Execute ``idf.py create-project --help`` for more information.
+
+Example:
+
+.. code-block:: bash
+
+    idf.py create-project --path my_projects my_new_project
+
+This example will create a new project called my_new_project directly into the directory my_projects.
 
 Using CMake Directly
 --------------------
@@ -190,7 +212,25 @@ If using CMake directly, running ``cmake -D PYTHON=python3 ...`` will cause CMak
 
 If using an IDE with CMake, setting the ``PYTHON`` value as a CMake cache override in the IDE UI will override the default Python interpreter.
 
-To manage the Python version more generally via the command line, check out the tools pyenv_ or virtualenv_. These let you change the default python version.
+To manage the Python version more generally via the command line, check out the tools pyenv_ or virtualenv_. These let you change the default Python version.
+
+Possible issues
+^^^^^^^^^^^^^^^
+
+The user of ``idf.py`` may sometimes experience ``ImportError`` described below.
+
+.. code-block:: none
+
+    Traceback (most recent call last):
+      File "/Users/user_name/e/esp-idf/tools/kconfig_new/confgen.py", line 27, in <module>
+        import kconfiglib
+    ImportError: bad magic number in 'kconfiglib': b'\x03\xf3\r\n'
+
+The exception is often caused by ``.pyc`` files generated by different Python versions. To solve the issue run the following command:
+
+.. code-block:: bash
+
+    idf.py python-clean
 
 .. _example-project-structure:
 
@@ -285,7 +325,7 @@ Renaming ``main`` component
 The build system provides special treatment to the ``main`` component. It is a component that gets automatically added to the build provided
 that it is in the expected location, PROJECT_DIR/main. All other components in the build are also added as its dependencies,
 saving the user from hunting down dependencies and providing a build that works right out of the box. Renaming the ``main`` component
-causes the loss of these behind-the-scences heavy lifting, requiring the user to specify the location of the newly renamed component
+causes the loss of these behind-the-scenes heavy lifting, requiring the user to specify the location of the newly renamed component
 and manually specifying its dependencies. Specifically, the steps to renaming ``main`` are as follows:
 
 1. Rename ``main`` directory.
@@ -318,6 +358,9 @@ contain component sub-directories with the same name, the component in the last 
 with a modified version by copying that component from the ESP-IDF components directory to the project components directory and then modifying it there.
 If used in this way, the ESP-IDF directory itself can remain untouched.
 
+.. note:: If a component is overridden in an existing project by moving it to a new location, the project will not automatically see the new component path. Run ``idf.py reconfigure`` (or delete the project build folder) and then build again.
+
+
 .. _cmake_minimal_component_cmakelists:
 
 Minimal Component CMakeLists
@@ -342,6 +385,23 @@ There are other arguments that can be passed to ``idf_component_register``. Thes
 are discussed :ref:`here<cmake-component-register>`.
 
 See `example component requirements`_ and  `example component CMakeLists`_ for more complete component ``CMakeLists.txt`` examples.
+
+Create a new component
+----------------------
+
+Use the command ``idf.py create-component`` for creating a new component.
+The new component will contain set of files necessary for building a component.
+You may include the component's header file into your project and use its functionality.
+For more information execute ``idf.py create-component --help``.
+
+Example:
+
+.. code-block:: bash
+
+    idf.py -C components create-component my_component
+
+The example will create a new component in the subdirectory `components` under the current working directory.
+For more information about components follow the documentation page :ref:`see above <component-directories>`.
 
 .. _component variables:
 
@@ -832,6 +892,24 @@ Place this line after the ``project()`` line in your project CMakeLists.txt file
 
 For an example of using this technique, see :example:`protocols/https_request` - the certificate file contents are loaded from the text .pem file at compile time.
 
+
+.. highlight:: cmake
+
+It is also possible embed a generated file::
+
+  add_custom_command(OUTPUT my_processed_file.bin
+                    COMMAND my_process_file_cmd my_unprocessed_file.bin)
+  target_add_binary_data(my_target "my_processed_file.bin" BINARY)
+
+In the example above, ``my_processed_file.bin`` is generated from ``my_unprocessed_file.bin`` through some command ``my_process_file_cmd``, then embedded into the target.
+
+To specify a dependence on a target, use the ``DEPENDS`` argument::
+
+  add_custom_target(my_process COMMAND ...)
+  target_add_binary_data(my_target "my_embed_file.bin" BINARY DEPENDS my_process)
+
+The ``DEPENDS`` argument to ``target_add_binary_data`` ensures that the target executes first.
+
 Code and Data Placements
 ------------------------
 
@@ -981,7 +1059,7 @@ To select the target before building the project, use ``idf.py set-target <targe
     2. removing the sdkconfig file (``mv sdkconfig sdkconfig.old``)
     3. configuring the project with the new target (``idf.py -DIDF_TARGET=esp32 reconfigure``)
 
-It is also possible to pass the desired ``IDF_TARGET`` as an environement variable (e.g. ``export IDF_TARGET=esp32s2``) or as a CMake variable (e.g. ``-DIDF_TARGET=esp32s2`` argument to CMake or idf.py). Setting the environment variable is a convenient method if you mostly work with one type of the chip.
+It is also possible to pass the desired ``IDF_TARGET`` as an environment variable (e.g. ``export IDF_TARGET=esp32s2``) or as a CMake variable (e.g. ``-DIDF_TARGET=esp32s2`` argument to CMake or idf.py). Setting the environment variable is a convenient method if you mostly work with one type of the chip.
 
 To specify the _default_ value of ``IDF_TARGET`` for a given project, add ``CONFIG_IDF_TARGET`` value to ``sdkconfig.defaults``. For example, ``CONFIG_IDF_TARGET="esp32s2"``. This value will be used if ``IDF_TARGET`` is not specified by other method: using an environment variable, CMake variable, or ``idf.py set-target`` command.
 
@@ -1100,7 +1178,7 @@ It is possible to do so by using the :ref:`build system APIs provided<cmake_buil
   include($ENV{IDF_PATH}/tools/cmake/idf.cmake)
 
   # Include ESP-IDF components in the build, may be thought as an equivalent of 
-  # add_subdirectory() but with some additional procesing and magic for ESP-IDF build
+  # add_subdirectory() but with some additional processing and magic for ESP-IDF build
   # specific build processes.
   idf_build_process(esp32)
   

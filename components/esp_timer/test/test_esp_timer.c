@@ -6,7 +6,6 @@
 #include "esp_timer.h"
 #include "esp_timer_impl.h"
 #include "unity.h"
-#include "soc/frc_timer_reg.h"
 #include "soc/timer_group_reg.h"
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
@@ -14,6 +13,11 @@
 #include "freertos/semphr.h"
 #include "test_utils.h"
 #include "esp_freertos_hooks.h"
+#include "esp_rom_sys.h"
+
+#if CONFIG_ESP_TIMER_IMPL_FRC2
+#include "soc/frc_timer_reg.h"
+#endif
 
 #ifdef CONFIG_ESP_TIMER_PROFILING
 #define WITH_PROFILING 1
@@ -207,7 +211,7 @@ TEST_CASE("periodic esp_timer produces correct delays", "[esp_timer]")
         p_args->intervals[p_args->cur_interval++] = ms_diff;
         // Deliberately make timer handler run longer.
         // We check that this doesn't affect the result.
-        ets_delay_us(10*1000);
+        esp_rom_delay_us(10*1000);
         if (p_args->cur_interval == NUM_INTERVALS) {
             printf("done\n");
             TEST_ESP_OK(esp_timer_stop(p_args->timer));
@@ -734,7 +738,7 @@ static void dport_task(void *pvParameters)
 {
     while (task_stop == false) {
         DPORT_STALL_OTHER_CPU_START();
-        ets_delay_us(3);
+        esp_rom_delay_us(3);
         DPORT_STALL_OTHER_CPU_END();
     }
     vTaskDelete(NULL);
@@ -836,7 +840,7 @@ TEST_CASE("Test case when esp_timer_impl_set_alarm needs set timer < now_time", 
 #endif
     esp_timer_impl_advance(50331648); // 0xefffffff/80 = 50331647
 
-    ets_delay_us(2);
+    esp_rom_delay_us(2);
 
     portDISABLE_INTERRUPTS();
     esp_timer_impl_set_alarm(50331647);
@@ -854,6 +858,7 @@ TEST_CASE("Test case when esp_timer_impl_set_alarm needs set timer < now_time", 
     TEST_ASSERT(alarm_reg <= (count_reg + offset));
 }
 
+#ifdef CONFIG_ESP_TIMER_IMPL_FRC2
 TEST_CASE("Test esp_timer_impl_set_alarm when the counter is near an overflow value", "[esp_timer]")
 {
     for (int i = 0; i < 1024; ++i) {
@@ -863,3 +868,4 @@ TEST_CASE("Test esp_timer_impl_set_alarm when the counter is near an overflow va
         esp_timer_impl_set_alarm(1); // timestamp is expired
     }
 }
+#endif

@@ -28,6 +28,7 @@
 #include "esp_attr.h"
 #include "esp_spi_flash.h"
 #include "esp_log.h"
+#include "esp_private/system_internal.h"
 #if CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/spi_flash.h"
 #include "esp32/rom/cache.h"
@@ -36,14 +37,15 @@
 #include "esp32s2/rom/spi_flash.h"
 #include "esp32s2/rom/cache.h"
 #include "esp32s2/clk.h"
-#include "soc/spi_mem_reg.h"
-#include "soc/spi_mem_struct.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/spi_flash.h"
+#include "esp32s3/rom/cache.h"
+#include "esp32s3/clk.h"
 #endif
 #include "esp_flash_partitions.h"
 #include "cache_utils.h"
 #include "esp_flash.h"
 #include "esp_attr.h"
-#include "esp_timer.h"
 
 esp_rom_spiflash_result_t IRAM_ATTR spi_flash_write_encrypted_chip(size_t dest_addr, const void *src, size_t size);
 
@@ -140,7 +142,6 @@ static __attribute__((unused)) bool is_safe_write_address(size_t addr, size_t si
     }
     return true;
 }
-
 
 void spi_flash_init(void)
 {
@@ -258,7 +259,7 @@ esp_err_t IRAM_ATTR spi_flash_erase_range(size_t start_addr, size_t size)
 #endif
         for (size_t sector = start; sector != end && rc == ESP_ROM_SPIFLASH_RESULT_OK; ) {
 #ifdef CONFIG_SPI_FLASH_YIELD_DURING_ERASE
-            int64_t start_time_us = esp_timer_get_time();
+            int64_t start_time_us = esp_system_get_time();
 #endif
             spi_flash_guard_start();
 #ifndef CONFIG_SPI_FLASH_BYPASS_BLOCK_ERASE
@@ -275,7 +276,7 @@ esp_err_t IRAM_ATTR spi_flash_erase_range(size_t start_addr, size_t size)
             }
             spi_flash_guard_end();
 #ifdef CONFIG_SPI_FLASH_YIELD_DURING_ERASE
-            no_yield_time_us += (esp_timer_get_time() - start_time_us);
+            no_yield_time_us += (esp_system_get_time() - start_time_us);
             if (no_yield_time_us / 1000 >= CONFIG_SPI_FLASH_ERASE_YIELD_DURATION_MS) {
                 no_yield_time_us = 0;
                 if (s_flash_guard_ops && s_flash_guard_ops->yield) {
@@ -288,6 +289,8 @@ esp_err_t IRAM_ATTR spi_flash_erase_range(size_t start_addr, size_t size)
     COUNTER_STOP(erase);
 
     spi_flash_guard_start();
+    // Ensure WEL is 0 after the operation, even if the erase failed.
+    esp_rom_spiflash_write_disable();
     spi_flash_check_and_flush_cache(start_addr, size);
     spi_flash_guard_end();
 
@@ -460,6 +463,8 @@ out:
     COUNTER_STOP(write);
 
     spi_flash_guard_start();
+    // Ensure WEL is 0 after the operation, even if the write failed.
+    esp_rom_spiflash_write_disable();
     spi_flash_check_and_flush_cache(dst, size);
     spi_flash_guard_end();
 
@@ -490,6 +495,7 @@ esp_err_t IRAM_ATTR spi_flash_write_encrypted(size_t dest_addr, const void *src,
     err = spi_flash_write_encrypted_chip(dest_addr, src, size);
     COUNTER_ADD_BYTES(write, size);
     spi_flash_guard_start();
+    esp_rom_spiflash_write_disable();
     spi_flash_check_and_flush_cache(dest_addr, size);
     spi_flash_guard_end();
 #else
@@ -524,6 +530,7 @@ esp_err_t IRAM_ATTR spi_flash_write_encrypted(size_t dest_addr, const void *src,
         COUNTER_ADD_BYTES(write, size);
 
         spi_flash_guard_start();
+        esp_rom_spiflash_write_disable();
         spi_flash_check_and_flush_cache(dest_addr, size);
         spi_flash_guard_end();
 
@@ -777,7 +784,8 @@ void spi_flash_dump_counters(void)
 
 #endif //CONFIG_SPI_FLASH_ENABLE_COUNTERS
 
-#if defined(CONFIG_SPI_FLASH_USE_LEGACY_IMPL) && defined(CONFIG_IDF_TARGET_ESP32S2)
+
+#if defined(CONFIG_SPI_FLASH_USE_LEGACY_IMPL) && (defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3))
 // TODO esp32s2: Remove once ESP32S2 has new SPI Flash API support
 esp_flash_t *esp_flash_default_chip = NULL;
 #endif

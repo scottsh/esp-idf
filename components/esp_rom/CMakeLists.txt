@@ -1,9 +1,11 @@
 idf_build_get_property(target IDF_TARGET)
 
 idf_component_register(SRCS "patches/esp_rom_crc.c"
+                            "patches/esp_rom_sys.c"
+                            "patches/esp_rom_uart.c"
                        INCLUDE_DIRS include
                        PRIV_INCLUDE_DIRS "${target}"
-                       PRIV_REQUIRES soc)
+                       PRIV_REQUIRES soc hal)
 
 if(BOOTLOADER_BUILD)
     set(scripts
@@ -82,7 +84,6 @@ else() # Regular app build
     endif()
 
     target_linker_script(${COMPONENT_LIB} INTERFACE "${scripts}")
-
 endif()
 
 if(target STREQUAL "esp32s2")

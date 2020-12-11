@@ -2,6 +2,12 @@
 快速入门
 ***********
 
+{IDF_TARGET_CORE_NUM:default="2", esp32="2", esp32s2="1"}
+
+{IDF_TARGET_FEATURES:default="WiFi/BT/BLE, silicon revision 1, 2MB external flash", esp32="WiFi/BT/BLE, silicon revision 1, 2MB external flash", esp32s2="WiFi, silicon revision 0, 2MB external flash"}
+
+{IDF_TARGET_HEAP_SIZE:default="298968", esp32="298968", esp32s2="253900"}
+
 :link_to_translation:`en:[English]`
 
 本文档旨在指导用户搭建 {IDF_TARGET_NAME} 硬件开发的软件环境，通过一个简单的示例展示如何使用 ESP-IDF (Espressif IoT Development Framework) 配置菜单，并编译、下载固件至 {IDF_TARGET_NAME} 开发板等步骤。
@@ -80,6 +86,7 @@
         :maxdepth: 1
         
         ESP32-S2-Saola-1 <../hw-reference/esp32s2/user-guide-saola-1-v1.2>
+        ESP32-S2-DevKitM-1(U) <../hw-reference/esp32s2/user-guide-devkitm-1-v1>
         ESP32-S2-Kaluga-Kit <../hw-reference/esp32s2/user-guide-esp32-s2-kaluga-1-kit>
 
 .. _get-started-step-by-step:
@@ -141,6 +148,10 @@
 .. _Linux: ../get-started/linux-setup.html
 .. _Mac OS: ../get-started/macos-setup.html
 
+.. note::
+
+    在本文档中，Linux 和 MacOS 操作系统中 ESP-IDF 的默认安装路径为 ``~/esp``；Windows 操作系统的默认路径为 ``%userprofile%\esp``。您也可以将 ESP-IDF 安装在任何其他路径下，但请注意在使用命令行时进行相应替换。注意，ESP-IDF 不支持带有空格的路径。
+
 .. _get-started-get-esp-idf:
 
 
@@ -150,10 +161,6 @@
 在围绕 {IDF_TARGET_NAME} 构建应用程序之前，请先获取乐鑫提供的软件库文件 `ESP-IDF 仓库 <https://github.com/espressif/esp-idf>`_。
 
 获取 ESP-IDF 的本地副本：打开终端，切换到您要保存 ESP-IDF 的工作目录，使用 ``git clone`` 命令克隆远程仓库。针对不同操作系统的详细步骤，请见下文。
-
-.. note::
-
-    在本文档中，Linux 和 MacOS 操作系统中 ESP-IDF 的默认安装路径为 ``~/esp``；Windows 操作系统的默认路径为 ``%userprofile%\esp``。您也可以将 ESP-IDF 安装在任何其他路径下，但请注意在使用命令行时进行相应替换。注意，ESP-IDF 不支持带有空格的路径。
 
 Linux 和 MacOS 操作系统
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -317,6 +324,7 @@ Linux 和 MacOS 操作系统
 .. code-block:: bash
 
     cd ~/esp/hello_world
+    idf.py set-target {IDF_TARGET_PATH_NAME}
     idf.py menuconfig
 
 Windows 操作系统
@@ -325,9 +333,10 @@ Windows 操作系统
 .. code-block:: batch
 
     cd %userprofile%\esp\hello_world
+    idf.py set-target {IDF_TARGET_PATH_NAME}
     idf.py menuconfig
 
-打开一个新项目后，应首先设置“目标”芯片 ``idf.py set-target {IDF_TARGET}``。注意，此操作将清除并初始化项目之前的编译和配置（如有）。 您也可以直接将“目标”配置为环境变量（此时可跳过该步骤）。更多信息，请见 :ref:`selecting-idf-target`。
+打开一个新项目后，应首先设置“目标”芯片 ``idf.py set-target {IDF_TARGET_PATH_NAME}``。注意，此操作将清除并初始化项目之前的编译和配置（如有）。 您也可以直接将“目标”配置为环境变量（此时可跳过该步骤）。更多信息，请见 :ref:`selecting-idf-target`。
 
 如果之前的步骤都正确，则会显示下面的菜单：
 
@@ -393,7 +402,7 @@ Windows 操作系统
 第九步：烧录到设备
 =============================
 
-请使用以下命令，将刚刚生成的二进制文件烧录至您的 {IDF_TARGET_NAME} 开发板：
+请使用以下命令，将刚刚生成的二进制文件烧录 (bootloader.bin, partition-table.bin 和 hello-world.bin)  至您的 {IDF_TARGET_NAME} 开发板：
 
     ``idf.py -p PORT [-b BAUD] flash``
 
@@ -469,13 +478,14 @@ Windows 操作系统
 
 .. code-block:: none
 
-    ...
-    Hello world!
-    Restarting in 10 seconds...
-    I (211) cpu_start: Starting scheduler on APP CPU.
-    Restarting in 9 seconds...
-    Restarting in 8 seconds...
-    Restarting in 7 seconds...
+    	...
+    	Hello world!
+    	Restarting in 10 seconds...
+    	This is {IDF_TARGET_PATH_NAME} chip with {IDF_TARGET_CORE_NUM} CPU core(s), {IDF_TARGET_FEATURES}
+	Minimum free heap size: {IDF_TARGET_HEAP_SIZE} bytes
+    	Restarting in 9 seconds...
+    	Restarting in 8 seconds...
+    	Restarting in 7 seconds...
 
 您可使用快捷键 ``Ctrl+]``，退出 IDF 监视器。
 
@@ -529,6 +539,7 @@ Windows 操作系统
 
     establish-serial-connection
     eclipse-setup
+    vscode-setup
     ../api-guides/tools/idf-monitor
     toolchain-setup-scratch
     :esp32: ../get-started-legacy/index

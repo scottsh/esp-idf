@@ -21,7 +21,7 @@ import fnmatch
 
 from fragments import Sections, Scheme, Mapping, Fragment
 from pyparsing import Suppress, White, ParseException, Literal, Group, ZeroOrMore
-from pyparsing import Word, OneOrMore, nums, alphanums, alphas, Optional, LineEnd, printables
+from pyparsing import Word, OneOrMore, nums, alphanums, alphas, Optional, restOfLine
 from ldgen_common import LdGenFailure
 
 
@@ -80,8 +80,7 @@ class PlacementRule():
         def do_section_expansion(rule, section):
             if section in rule.get_section_names():
                 sections_in_obj = sections_infos.get_obj_sections(rule.archive, rule.obj)
-
-                expansions = fnmatch.filter(sections_in_obj, section)
+                expansions = [n for n in sections_in_obj or [] if fnmatch.fnmatch(n, section)]
                 return expansions
 
         def remove_section_expansions(rule, section, expansions):
@@ -581,9 +580,9 @@ class SectionsInfo(dict):
         first_line = sections_info_dump.readline()
 
         archive_path = (Literal("In archive").suppress() +
-                        # trim the last character from archive_path, :
-                        Word(printables + " ").setResultsName("archive_path").setParseAction(lambda t: t[0][:-1]) +
-                        LineEnd())
+                        White().suppress() +
+                        # trim the colon and line ending characters from archive_path
+                        restOfLine.setResultsName("archive_path").setParseAction(lambda s, loc, toks: s.rstrip(":\n\r ")))
         parser = archive_path
 
         results = None

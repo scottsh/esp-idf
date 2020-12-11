@@ -46,6 +46,7 @@ suppress_warnings = ['image.nonlocal_uri']
 extensions = ['breathe',
 
               'sphinx.ext.todo',
+              'sphinx_copybutton',
               'sphinx_idf_theme',
               'sphinxcontrib.blockdiag',
               'sphinxcontrib.seqdiag',
@@ -53,6 +54,7 @@ extensions = ['breathe',
               'sphinxcontrib.nwdiag',
               'sphinxcontrib.rackdiag',
               'sphinxcontrib.packetdiag',
+              'sphinxcontrib.cairosvgconverter',
 
               'extensions.html_redirects',
               'extensions.toctree_filter',
@@ -139,11 +141,11 @@ BT_DOCS = ['api-guides/blufi.rst',
 SDMMC_DOCS = ['api-reference/peripherals/sdmmc_host.rst',
               'api-reference/peripherals/sd_pullup_requirements.rst']
 
-SDIO_SLAVE_DOCS = ['api-reference/peripherals/sdio_slave.rst',
-                   'api-reference/peripherals/esp_slave_protocol.rst',
-                   'api-reference/protocols/esp_serial_slave_link.rst']
+SDIO_SLAVE_DOCS = ['api-reference/peripherals/sdio_slave.rst']
 
 MCPWM_DOCS = ['api-reference/peripherals/mcpwm.rst']
+
+DEDIC_GPIO_DOCS = ['api-reference/peripherals/dedic_gpio.rst']
 
 LEGACY_DOCS = ['api-guides/build-system-legacy.rst',
                'gnu-make-legacy.rst',
@@ -151,13 +153,13 @@ LEGACY_DOCS = ['api-guides/build-system-legacy.rst',
                'api-guides/unit-tests-legacy.rst',
                'get-started-legacy/**']
 
+USB_DOCS = ['api-reference/peripherals/usb.rst']
+
 ESP32_DOCS = ['api-guides/ulp_instruction_set.rst',
-              'api-guides/jtag-debugging/configure-wrover.rst',
               'api-reference/system/himem.rst',
               'api-guides/RF_calibration.rst',
               'api-reference/system/ipc.rst',
               'security/secure-boot-v1.rst',
-              'security/secure-boot-v2.rst',
               'api-reference/peripherals/secure_element.rst',
               'hw-reference/esp32/**'] + LEGACY_DOCS
 
@@ -166,16 +168,21 @@ ESP32S2_DOCS = ['esp32s2.rst',
                 'api-guides/ulps2_instruction_set.rst',
                 'api-guides/dfu.rst',
                 'api-guides/usb-console.rst',
+                'api-guides/ulp-risc-v.rst',
                 'api-reference/peripherals/hmac.rst',
                 'api-reference/peripherals/ds.rst',
-                'api-reference/peripherals/temp_sensor.rst'
-                '']
+                'api-reference/peripherals/spi_slave_hd.rst',
+                'api-reference/peripherals/temp_sensor.rst',
+                'api-reference/system/async_memcpy.rst',
+                'api-reference/peripherals/usb.rst']
 
 # format: {tag needed to include: documents to included}, tags are parsed from sdkconfig and peripheral_caps.h headers
 conditional_include_dict = {'SOC_BT_SUPPORTED':BT_DOCS,
                             'SOC_SDMMC_HOST_SUPPORTED':SDMMC_DOCS,
                             'SOC_SDIO_SLAVE_SUPPORTED':SDIO_SLAVE_DOCS,
                             'SOC_MCPWM_SUPPORTED':MCPWM_DOCS,
+                            'SOC_USB_SUPPORTED':USB_DOCS,
+                            'SOC_DEDICATED_GPIO_SUPPORTED':DEDIC_GPIO_DOCS,
                             'esp32':ESP32_DOCS,
                             'esp32s2':ESP32S2_DOCS}
 

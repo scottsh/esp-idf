@@ -264,7 +264,7 @@ failed:
  * @in_data: Pointer to plaintext data to be encrypted
  * @in_len: Input buffer length
  * @out_data: Pointer to output buffer (encrypted TLS data)
- * @out_len: Maximum out_data length 
+ * @out_len: Maximum out_data length
  * Returns: Number of bytes written to out_data, -1 on failure
  *
  * This function is used after TLS handshake has been completed successfully to
@@ -552,7 +552,7 @@ int tlsv1_client_prf(struct tlsv1_client *conn, const char *label,
 int tlsv1_client_get_cipher(struct tlsv1_client *conn, char *buf,
 			    size_t buflen)
 {
-#ifndef ESPRESSIF_USE	
+#ifndef ESPRESSIF_USE
 	char *cipher;
 
 	switch (conn->rl.cipher_suite) {
@@ -706,18 +706,16 @@ int tlsv1_client_hello_ext(struct tlsv1_client *conn, int ext_type,
 	if (data == NULL || data_len == 0)
 		return 0;
 
-	pos = conn->client_hello_ext = os_malloc(6 + data_len);
+	pos = conn->client_hello_ext = os_malloc(4 + data_len);
 	if (pos == NULL)
 		return -1;
 
-	WPA_PUT_BE16(pos, 4 + data_len);
-	pos += 2;
 	WPA_PUT_BE16(pos, ext_type);
 	pos += 2;
 	WPA_PUT_BE16(pos, data_len);
 	pos += 2;
 	os_memcpy(pos, data, data_len);
-	conn->client_hello_ext_len = 6 + data_len;
+	conn->client_hello_ext_len = 4 + data_len;
 
 	if (ext_type == TLS_EXT_PAC_OPAQUE) {
 		conn->session_ticket_included = 1;

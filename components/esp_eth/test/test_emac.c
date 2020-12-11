@@ -13,7 +13,7 @@
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
 #include "ping/ping_sock.h"
-#include "esp32/rom/md5_hash.h"
+#include "esp_rom_md5.h"
 #include "soc/soc_caps.h"
 
 #if SOC_EMAC_SUPPORTED
@@ -35,8 +35,10 @@ static const char *TAG = "esp32_eth_test";
 #define ETH_PING_DURATION_MS (5000)
 #define ETH_PING_END_TIMEOUT_MS (ETH_PING_DURATION_MS * 2)
 
+#define TEST_ICMP_DESTINATION_DOMAIN_NAME "127.0.0.1"
+
 // compute md5 of download file
-static struct MD5Context md5_context;
+static md5_context_t md5_context;
 static uint8_t digest[16];
 
 /** Event handler for Ethernet events */
@@ -343,12 +345,13 @@ TEST_CASE("esp32 ethernet icmp test", "[ethernet][test_env=UT_T2_Ethernet]")
     memset(&hint, 0, sizeof(hint));
     memset(&target_addr, 0, sizeof(target_addr));
     /* convert URL to IP */
-    TEST_ASSERT(getaddrinfo("www.baidu.com", NULL, &hint, &res) == 0);
+    TEST_ASSERT(getaddrinfo(TEST_ICMP_DESTINATION_DOMAIN_NAME, NULL, &hint, &res) == 0);
     struct in_addr addr4 = ((struct sockaddr_in *)(res->ai_addr))->sin_addr;
     inet_addr_to_ip4addr(ip_2_ip4(&target_addr), &addr4);
     freeaddrinfo(res);
 
     esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
+    ping_config.timeout_ms = 2000;
     ping_config.target_addr = target_addr;
     ping_config.count = 0; // ping in infinite mode
     /* set callback functions */
@@ -411,7 +414,7 @@ esp_err_t http_event_handle(esp_http_client_event_t *evt)
         ESP_LOGI(TAG, "HTTP_EVENT_ON_HEADER");
         break;
     case HTTP_EVENT_ON_DATA:
-        MD5Update(&md5_context, evt->data, evt->data_len);
+        esp_rom_md5_update(&md5_context, evt->data, evt->data_len);
         break;
     case HTTP_EVENT_ON_FINISH:
         ESP_LOGI(TAG, "HTTP_EVENT_ON_FINISH");
@@ -426,7 +429,7 @@ esp_err_t http_event_handle(esp_http_client_event_t *evt)
 static void eth_download_task(void *param)
 {
     EventGroupHandle_t eth_event_group = (EventGroupHandle_t)param;
-    MD5Init(&md5_context);
+    esp_rom_md5_init(&md5_context);
     esp_http_client_config_t config = {
         .url = "https://dl.espressif.com/dl/misc/2MB.bin",
         .event_handler = http_event_handle,
@@ -436,7 +439,7 @@ static void eth_download_task(void *param)
     TEST_ASSERT_NOT_NULL(client);
     TEST_ESP_OK(esp_http_client_perform(client));
     TEST_ESP_OK(esp_http_client_cleanup(client));
-    MD5Final(digest, &md5_context);
+    esp_rom_md5_final(digest, &md5_context);
     xEventGroupSetBits(eth_event_group, ETH_DOWNLOAD_END_BIT);
     vTaskDelete(NULL);
 }

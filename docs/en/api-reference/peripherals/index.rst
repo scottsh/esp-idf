@@ -10,6 +10,7 @@ Peripherals API
     ADC <adc>
     DAC <dac>
     GPIO (including RTC low power I/O) <gpio>
+    :SOC_DEDICATED_GPIO_SUPPORTED: Dedicated GPIO <dedic_gpio>
     :esp32s2: HMAC <hmac>
     :esp32s2: Digital Signature <ds>
     I2C <i2c>
@@ -26,11 +27,13 @@ Peripherals API
     SPI Master <spi_master>
     SPI Slave <spi_slave>
     :esp32: Secure Element <secure_element>
+    :esp32s2: SPI Slave Half Duplex <spi_slave_hd>
     :esp32s2: Temp sensor <temp_sensor>
     Timer <timer>
     Touch Sensor <touch_pad>
     TWAI <twai>
     UART <uart>
+    :SOC_USB_SUPPORTED: USB <usb>
 
 
 Code examples for this API section are provided in the :example:`peripherals` directory of ESP-IDF examples.

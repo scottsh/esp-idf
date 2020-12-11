@@ -32,6 +32,7 @@ static const char *TAG="httpd_ws";
  * Bit masks for WebSocket frames.
  * Please refer to RFC6455 Section 5.2 for more details.
  */
+#define HTTPD_WS_CONTINUE       0x00U
 #define HTTPD_WS_FIN_BIT        0x80U
 #define HTTPD_WS_OPCODE_BITS    0x0fU
 #define HTTPD_WS_MASK_BIT       0x80U
@@ -279,7 +280,8 @@ esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t 
     /* Prepare Tx buffer - maximum length is 14, which includes 2 bytes header, 8 bytes length, 4 bytes mask key */
     uint8_t tx_len = 0;
     uint8_t header_buf[10] = {0 };
-    header_buf[0] |= frame->final ? HTTPD_WS_FIN_BIT : 0; /* Final (FIN) bit */
+    /* Set the `FIN` bit by default if message is not fragmented. Else, set it as per the `final` field */
+    header_buf[0] |= (!frame->fragmented) ? HTTPD_WS_FIN_BIT : (frame->final? HTTPD_WS_FIN_BIT: HTTPD_WS_CONTINUE);
     header_buf[0] |= frame->type; /* Type (opcode): 4 bits */
 
     if (frame->len <= 125) {
@@ -379,6 +381,17 @@ esp_err_t httpd_ws_get_frame_type(httpd_req_t *req)
     }
 
     return ESP_OK;
+}
+
+httpd_ws_client_info_t httpd_ws_get_fd_info(httpd_handle_t hd, int fd)
+{
+    struct sock_db *sess = httpd_sess_get(hd, fd);
+
+    if (sess == NULL) {
+        return HTTPD_WS_CLIENT_INVALID;
+    }
+    bool is_active_ws = sess->ws_handshake_done && (!sess->ws_close);
+    return is_active_ws ? HTTPD_WS_CLIENT_WEBSOCKET : HTTPD_WS_CLIENT_HTTP;
 }
 
 #endif /* CONFIG_HTTPD_WS_SUPPORT */

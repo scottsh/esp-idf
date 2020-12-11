@@ -15,8 +15,9 @@ if(NOT BOOTLOADER_BUILD)
     # In this case, should be used the partition table with two ota app without the factory.
     partition_table_get_partition_info(factory_offset "--partition-type app --partition-subtype factory" "offset")
     if(CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK AND factory_offset)
-        fail_at_build_time(check_table_contents
-            "ERROR: Anti-rollback option is enabled. Partition table should consist of two ota app without factory partition.")
+        fail_at_build_time(check_table_contents "\
+ERROR: Anti-rollback option is enabled. Partition table should \
+consist of two ota app without factory partition.")
         add_dependencies(app check_table_contents)
     endif()
 
@@ -27,10 +28,10 @@ if(NOT BOOTLOADER_BUILD)
     set(ESPTOOLPY_BEFORE "${CONFIG_ESPTOOLPY_BEFORE}")
     set(ESPTOOLPY_AFTER  "${CONFIG_ESPTOOLPY_AFTER}")
     set(ESPTOOLPY_CHIP "${target}")
-    if(CONFIG_ESPTOOLPY_WITH_STUB)
-        set(ESPTOOLPY_WITH_STUB true)
-    else()
+    if(CONFIG_ESPTOOLPY_NO_STUB)
         set(ESPTOOLPY_WITH_STUB false)
+    else()
+        set(ESPTOOLPY_WITH_STUB true)
     endif()
 
     if(CONFIG_SECURE_BOOT OR CONFIG_SECURE_FLASH_ENC_ENABLED)
@@ -42,10 +43,9 @@ if(NOT BOOTLOADER_BUILD)
         file(READ "flasher_args.json.in" flasher_args_content)
         string(CONFIGURE "${flasher_args_content}" flasher_args_content)
 
-        file_generate("${CMAKE_CURRENT_BINARY_DIR}/flasher_args.json.in" 
+        file_generate("${CMAKE_CURRENT_BINARY_DIR}/flasher_args.json.in"
                     CONTENT "${flasher_args_content}")
-        file_generate("${CMAKE_BINARY_DIR}/flasher_args.json" 
+        file_generate("${CMAKE_BINARY_DIR}/flasher_args.json"
                     INPUT "${CMAKE_CURRENT_BINARY_DIR}/flasher_args.json.in")
     endif()
 endif()
-

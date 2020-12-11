@@ -1,4 +1,4 @@
-set(srcs 
+set(srcs
     "abort.c"
     "heap.c"
     "locks.c"
@@ -20,8 +20,9 @@ list(APPEND ldfragments newlib.lf)
 
 idf_component_register(SRCS "${srcs}"
                     INCLUDE_DIRS "${include_dirs}"
-                    PRIV_REQUIRES soc esp_timer
-                    LDFRAGMENTS "${ldfragments}")  
+                    PRIV_INCLUDE_DIRS priv_include
+                    PRIV_REQUIRES soc
+                    LDFRAGMENTS "${ldfragments}")
 
 # Toolchain libraries require code defined in this component
 idf_component_get_property(newlib newlib COMPONENT_LIB)
@@ -40,3 +41,5 @@ target_link_libraries(${COMPONENT_LIB} INTERFACE "${EXTRA_LINK_FLAGS}")
 if(CONFIG_NEWLIB_NANO_FORMAT)
     target_link_libraries(${COMPONENT_LIB} INTERFACE "--specs=nano.specs")
 endif()
+
+add_subdirectory(port)

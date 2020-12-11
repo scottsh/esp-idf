@@ -406,6 +406,12 @@ typedef struct httpd_uri {
      * If this flag is true, then method must be HTTP_GET. Otherwise the handshake will not be handled.
      */
     bool is_websocket;
+
+    /**
+     * Flag indicating that control frames (PING, PONG, CLOSE) are also passed to the handler
+     * This is used if a custom processing of the control frames is needed
+     */
+    bool handle_ws_control_frames;
 #endif
 } httpd_uri_t;
 
@@ -1047,7 +1053,7 @@ esp_err_t httpd_resp_send_chunk(httpd_req_t *r, const char *buf, ssize_t buf_len
  *  - ESP_ERR_HTTPD_INVALID_REQ : Invalid request
  */
 static inline esp_err_t httpd_resp_sendstr(httpd_req_t *r, const char *str) {
-    return httpd_resp_send(r, str, (str == NULL) ? 0 : strlen(str));
+    return httpd_resp_send(r, str, (str == NULL) ? 0 : HTTPD_RESP_USE_STRLEN);
 }
 
 /**
@@ -1068,7 +1074,7 @@ static inline esp_err_t httpd_resp_sendstr(httpd_req_t *r, const char *str) {
  *  - ESP_ERR_HTTPD_INVALID_REQ : Invalid request
  */
 static inline esp_err_t httpd_resp_sendstr_chunk(httpd_req_t *r, const char *str) {
-    return httpd_resp_send_chunk(r, str, (str == NULL) ? 0 : strlen(str));
+    return httpd_resp_send_chunk(r, str, (str == NULL) ? 0 : HTTPD_RESP_USE_STRLEN);
 }
 
 /* Some commonly used status codes */
@@ -1466,6 +1472,20 @@ esp_err_t httpd_sess_trigger_close(httpd_handle_t handle, int sockfd);
  */
 esp_err_t httpd_sess_update_lru_counter(httpd_handle_t handle, int sockfd);
 
+/**
+ * @brief   Returns list of current socket descriptors of active sessions
+ *
+ * @param[in] handle    Handle to server returned by httpd_start
+ * @param[in,out] fds   In: Number of fds allocated in the supplied structure client_fds
+ *                      Out: Number of valid client fds returned in client_fds,
+ * @param[out] client_fds  Array of client fds
+ *
+ * @return
+ *  - ESP_OK              : Successfully retrieved session list
+ *  - ESP_ERR_INVALID_ARG : Wrong arguments or list is longer than allocated
+ */
+esp_err_t httpd_get_client_list(httpd_handle_t handle, size_t *fds, int *client_fds);
+
 /** End of Session
  * @}
  */
@@ -1527,10 +1547,27 @@ typedef enum {
 } httpd_ws_type_t;
 
 /**
+ * @brief Enum for client info description
+ */
+typedef enum {
+    HTTPD_WS_CLIENT_INVALID        = 0x0,
+    HTTPD_WS_CLIENT_HTTP           = 0x1,
+    HTTPD_WS_CLIENT_WEBSOCKET      = 0x2,
+} httpd_ws_client_info_t;
+
+/**
  * @brief WebSocket frame format
  */
 typedef struct httpd_ws_frame {
-    bool final;                 /*!< Final frame */
+    bool final;                 /*!< Final frame:
+                                     For received frames this field indicates whether the `FIN` flag was set.
+                                     For frames to be transmitted, this field is only used if the `fragmented`
+                                         option is set as well. If `fragmented` is false, the `FIN` flag is set
+                                         by default, marking the ws_frame as a complete/unfragmented message
+                                         (esp_http_server doesn't automatically fragment messages) */
+    bool fragmented;            /*!< Indication that the frame allocated for transmission is a message fragment,
+                                     so the `FIN` flag is set manually according to the `final` option.
+                                     This flag is never set for received messages */
     httpd_ws_type_t type;       /*!< WebSocket frame type */
     uint8_t *payload;           /*!< Pre-allocated data buffer */
     size_t len;                 /*!< Length of the WebSocket data */
@@ -1577,6 +1614,19 @@ esp_err_t httpd_ws_send_frame(httpd_req_t *req, httpd_ws_frame_t *pkt);
  *  - ESP_ERR_INVALID_ARG       : Argument is invalid (null or non-WebSocket)
  */
 esp_err_t httpd_ws_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame);
+
+/**
+ * @brief Checks the supplied socket descriptor if it belongs to any active client
+ * of this server instance and if the websoket protocol is active
+ *
+ * @param[in] hd      Server instance data
+ * @param[in] fd      Socket descriptor
+ * @return
+ *  - HTTPD_WS_CLIENT_INVALID   : This fd is not a client of this httpd
+ *  - HTTPD_WS_CLIENT_HTTP      : This fd is an active client, protocol is not WS
+ *  - HTTPD_WS_CLIENT_WEBSOCKET : This fd is an active client, protocol is WS
+ */
+httpd_ws_client_info_t httpd_ws_get_fd_info(httpd_handle_t hd, int fd);
 
 #endif /* CONFIG_HTTPD_WS_SUPPORT */
 /** End of WebSocket related stuff

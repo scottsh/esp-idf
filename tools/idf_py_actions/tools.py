@@ -71,6 +71,7 @@ def run_tool(tool_name, args, cwd, env=dict()):
             return "'" + arg + "'"
         return arg
 
+    args = [str(arg) for arg in args]
     display_args = " ".join(quote_arg(arg) for arg in args)
     print("Running %s in directory %s" % (tool_name, quote_arg(cwd)))
     print('Executing "%s"...' % str(display_args))
@@ -199,7 +200,7 @@ def ensure_build_directory(args, prog_name, always_run_cmake=False):
                 "-DPYTHON_DEPS_CHECKED=1",
                 "-DESP_PLATFORM=1",
             ]
-            if not args.no_warnings:
+            if args.cmake_warn_uninitialized:
                 cmake_args += ["--warn-uninitialized"]
 
             if args.define_cache_entry:

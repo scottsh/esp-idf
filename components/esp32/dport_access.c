@@ -22,12 +22,9 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <sdkconfig.h>
 #include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_intr_alloc.h"
-#include "esp32/rom/ets_sys.h"
-#include "esp32/rom/uart.h"
 
 #include "soc/cpu.h"
 #include "soc/dport_reg.h"
@@ -39,6 +36,8 @@
 #include "freertos/queue.h"
 
 #include "xtensa/core-macros.h"
+
+#include "sdkconfig.h"
 
 #ifndef CONFIG_FREERTOS_UNICORE
 static portMUX_TYPE g_dport_mux = portMUX_INITIALIZER_UNLOCKED;

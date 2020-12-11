@@ -39,6 +39,7 @@ struct esp_https_ota_handle {
     size_t ota_upgrade_buf_size;
     int binary_file_len;
     esp_https_ota_state state;
+    bool bulk_flash_erase;
 };
 
 typedef struct esp_https_ota_handle esp_https_ota_t;
@@ -75,7 +76,7 @@ static esp_err_t _http_handle_response_code(esp_http_client_handle_t http_client
         ESP_LOGE(TAG, "Server error occurred(%d)", status_code);
         return ESP_FAIL;
     }
-    
+
     char upgrade_data_buf[DEFAULT_OTA_BUF_SIZE];
     // process_again() returns true only in case of redirection.
     if (process_again(status_code)) {
@@ -129,7 +130,7 @@ static esp_err_t _ota_write(esp_https_ota_t *https_ota_handle, const void *buffe
     }
     esp_err_t err = esp_ota_write(https_ota_handle->update_handle, buffer, buf_len);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Error: esp_ota_write failed! err=0x%d", err);
+        ESP_LOGE(TAG, "Error: esp_ota_write failed! err=0x%x", err);
     } else {
         https_ota_handle->binary_file_len += buf_len;
         ESP_LOGD(TAG, "Written image length %d", https_ota_handle->binary_file_len);
@@ -164,13 +165,21 @@ esp_err_t esp_https_ota_begin(esp_https_ota_config_t *ota_config, esp_https_ota_
         *handle = NULL;
         return ESP_ERR_NO_MEM;
     }
-    
+
     /* Initiate HTTP Connection */
     https_ota_handle->http_client = esp_http_client_init(ota_config->http_config);
     if (https_ota_handle->http_client == NULL) {
         ESP_LOGE(TAG, "Failed to initialise HTTP connection");
         err = ESP_FAIL;
         goto failure;
+    }
+
+    if (ota_config->http_client_init_cb) {
+        err = ota_config->http_client_init_cb(https_ota_handle->http_client);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "http_client_init_cb returned 0x%x", err);
+            goto failure;
+        }
     }
 
     err = _http_connect(https_ota_handle->http_client);
@@ -199,7 +208,7 @@ esp_err_t esp_https_ota_begin(esp_https_ota_config_t *ota_config, esp_https_ota_
         goto http_cleanup;
     }
     https_ota_handle->ota_upgrade_buf_size = alloc_size;
-
+    https_ota_handle->bulk_flash_erase = ota_config->bulk_flash_erase;
     https_ota_handle->binary_file_len = 0;
     *handle = (esp_https_ota_handle_t)https_ota_handle;
     https_ota_handle->state = ESP_HTTPS_OTA_BEGIN;
@@ -255,7 +264,7 @@ esp_err_t esp_https_ota_get_img_desc(esp_https_ota_handle_t https_ota_handle, es
     }
     handle->binary_file_len = bytes_read;
     memcpy(new_app_info, &handle->ota_upgrade_buf[sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t)], sizeof(esp_app_desc_t));
-    return ESP_OK;                                
+    return ESP_OK;
 }
 
 esp_err_t esp_https_ota_perform(esp_https_ota_handle_t https_ota_handle)
@@ -272,9 +281,10 @@ esp_err_t esp_https_ota_perform(esp_https_ota_handle_t https_ota_handle)
 
     esp_err_t err;
     int data_read;
+    const int erase_size = handle->bulk_flash_erase ? OTA_SIZE_UNKNOWN : OTA_WITH_SEQUENTIAL_WRITES;
     switch (handle->state) {
         case ESP_HTTPS_OTA_BEGIN:
-            err = esp_ota_begin(handle->update_partition, OTA_SIZE_UNKNOWN, &handle->update_handle);
+            err = esp_ota_begin(handle->update_partition, erase_size, &handle->update_handle);
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "esp_ota_begin failed (%s)", esp_err_to_name(err));
                 return err;
@@ -364,7 +374,7 @@ esp_err_t esp_https_ota_finish(esp_https_ota_handle_t https_ota_handle)
     if ((err == ESP_OK) && (handle->state == ESP_HTTPS_OTA_SUCCESS)) {
         esp_err_t err = esp_ota_set_boot_partition(handle->update_partition);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "esp_ota_set_boot_partition failed! err=0x%d", err);
+            ESP_LOGE(TAG, "esp_ota_set_boot_partition failed! err=0x%x", err);
         }
     }
     free(handle);
@@ -388,7 +398,7 @@ esp_err_t esp_https_ota(const esp_http_client_config_t *config)
     if (!config) {
         ESP_LOGE(TAG, "esp_http_client config not found");
         return ESP_ERR_INVALID_ARG;
-    }    
+    }
 
     esp_https_ota_config_t ota_config = {
         .http_config = config,

@@ -503,7 +503,7 @@ void esp_http_client_add_auth(esp_http_client_handle_t client);
  * @brief      Checks if entire data in the response has been read without any error.
  *
  * @param[in]  client   The esp_http_client handle
- * 
+ *
  * @return
  *     - true
  *     - false
@@ -523,6 +523,21 @@ bool esp_http_client_is_complete_data_received(esp_http_client_handle_t client);
  */
 
 int esp_http_client_read_response(esp_http_client_handle_t client, char *buffer, int len);
+
+/**
+ * @brief       Process all remaining response data
+ *              This uses an internal buffer to repeatedly receive, parse, and discard response data until complete data is processed.
+ *              As no additional user-supplied buffer is required, this may be preferrable to `esp_http_client_read_response` in situations where the content of the response may be ignored.
+ *
+ * @param[in]  client  The esp_http_client handle
+ * @param      len     Length of data discarded
+ *
+ * @return
+ *     - ESP_OK                 If successful, len will have discarded length
+ *     - ESP_FAIL               If failed to read response
+ *     - ESP_ERR_INVALID_ARG    If the client is NULL
+ */
+esp_err_t esp_http_client_flush_response(esp_http_client_handle_t client, int *len);
 
 /**
  * @brief          Get URL from client

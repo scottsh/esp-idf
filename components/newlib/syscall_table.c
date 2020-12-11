@@ -22,7 +22,6 @@
 #include <sys/signal.h>
 #include <sys/unistd.h>
 #include <sys/reent.h>
-#include "esp_vfs.h"
 #include "esp_newlib.h"
 #include "sdkconfig.h"
 #include "soc/soc_caps.h"
@@ -31,6 +30,8 @@
 #include "esp32/rom/libc_stubs.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/libc_stubs.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/libc_stubs.h"
 #endif
 
 static struct _reent s_reent;
@@ -106,5 +107,3 @@ void esp_setup_syscall_table(void)
     environ = malloc(sizeof(char*));
     environ[0] = NULL;
 }
-
-

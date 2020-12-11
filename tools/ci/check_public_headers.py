@@ -195,7 +195,7 @@ class PublicHeaderChecker:
         raise HeaderFailedBuildError()
 
     def preprocess_one_header(self, header, num, ignore_sdkconfig_issue=False):
-        all_compilation_flags = ["-w", "-P", "-E", "-include", header, self.main_c] + self.include_dir_flags
+        all_compilation_flags = ["-w", "-P", "-E", "-DESP_PLATFORM", "-include", header, self.main_c] + self.include_dir_flags
         if not ignore_sdkconfig_issue:
             # just strip commnets to check for CONFIG_... macros
             rc, out, err = exec_cmd([self.gcc, "-fpreprocessed", "-dD",  "-P",  "-E", header] + self.include_dir_flags)
@@ -259,6 +259,7 @@ class PublicHeaderChecker:
             if item.startswith("-D"):
                 include_dir_flags.append(item.replace('\\',''))  # removes escaped quotes, eg: -DMBEDTLS_CONFIG_FILE=\\\"mbedtls/esp_config.h\\\"
         include_dir_flags.append("-I" + os.path.join(project_dir, "build", "config"))
+        include_dir_flags.append("-DCI_HEADER_CHECK")
         sdkconfig_h = os.path.join(project_dir, "build", "config", "sdkconfig.h")
         # prepares a main_c file for easier sdkconfig checks and avoid compilers warning when compiling headers directly
         with open(sdkconfig_h, "a") as f:

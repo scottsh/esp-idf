@@ -19,22 +19,25 @@
 #include "esp_attr.h"
 #include "esp_log.h"
 
+#include "esp_rom_sys.h"
+#include "esp_rom_uart.h"
 #if CONFIG_IDF_TARGET_ESP32
 #include "esp32/rom/cache.h"
-#include "esp32/rom/efuse.h"
-#include "esp32/rom/ets_sys.h"
 #include "esp32/rom/spi_flash.h"
 #include "esp32/rom/rtc.h"
-#include "esp32/rom/uart.h"
 #include "esp32/rom/secure_boot.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/cache.h"
-#include "esp32s2/rom/efuse.h"
-#include "esp32s2/rom/ets_sys.h"
 #include "esp32s2/rom/spi_flash.h"
 #include "esp32s2/rom/rtc.h"
-#include "esp32s2/rom/uart.h"
 #include "esp32s2/rom/secure_boot.h"
+#include "soc/extmem_reg.h"
+#include "soc/cache_memory.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/cache.h"
+#include "esp32s3/rom/spi_flash.h"
+#include "esp32s3/rom/rtc.h"
+#include "esp32s3/rom/secure_boot.h"
 #include "soc/extmem_reg.h"
 #include "soc/cache_memory.h"
 #else
@@ -55,7 +58,7 @@
 #include "esp_secure_boot.h"
 #include "esp_flash_encrypt.h"
 #include "esp_flash_partitions.h"
-#include "bootloader_flash.h"
+#include "bootloader_flash_priv.h"
 #include "bootloader_random.h"
 #include "bootloader_config.h"
 #include "bootloader_common.h"
@@ -614,7 +617,7 @@ static void load_image(const esp_image_metadata_t *image_data)
            so issue a system reset to ensure flash encryption
            cache resets properly */
         ESP_LOGI(TAG, "Resetting with flash encryption enabled...");
-        uart_tx_wait_idle(0);
+        esp_rom_uart_tx_wait_idle(0);
         bootloader_reset();
     }
 #endif
@@ -687,6 +690,9 @@ static void set_cache_and_start_app(
 #elif CONFIG_IDF_TARGET_ESP32S2
     uint32_t autoload = Cache_Suspend_ICache();
     Cache_Invalidate_ICache_All();
+#elif CONFIG_IDF_TARGET_ESP32S3
+    uint32_t autoload = Cache_Suspend_DCache();
+    Cache_Invalidate_DCache_All();
 #endif
 
     /* Clear the MMU entries that are already set up,
@@ -696,7 +702,7 @@ static void set_cache_and_start_app(
     for (int i = 0; i < DPORT_FLASH_MMU_TABLE_SIZE; i++) {
         DPORT_PRO_FLASH_MMU_TABLE[i] = DPORT_FLASH_MMU_TABLE_INVALID_VAL;
     }
-#elif CONFIG_IDF_TARGET_ESP32S2
+#elif defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)
     for (int i = 0; i < FLASH_MMU_TABLE_SIZE; i++) {
         FLASH_MMU_TABLE[i] = MMU_TABLE_INVALID_VAL;
     }
@@ -709,6 +715,8 @@ static void set_cache_and_start_app(
     rc = cache_flash_mmu_set(0, 0, drom_load_addr_aligned, drom_addr & MMU_FLASH_MASK, 64, drom_page_count);
 #elif CONFIG_IDF_TARGET_ESP32S2
     rc = Cache_Ibus_MMU_Set(MMU_ACCESS_FLASH, drom_load_addr & 0xffff0000, drom_addr & 0xffff0000, 64, drom_page_count, 0);
+#elif CONFIG_IDF_TARGET_ESP32S3
+    rc = Cache_Dbus_MMU_Set(MMU_ACCESS_FLASH, drom_load_addr & 0xffff0000, drom_addr & 0xffff0000, 64, drom_page_count, 0);
 #endif
     ESP_LOGV(TAG, "rc=%d", rc);
 #if CONFIG_IDF_TARGET_ESP32
@@ -732,6 +740,8 @@ static void set_cache_and_start_app(
         REG_CLR_BIT(EXTMEM_PRO_ICACHE_CTRL1_REG, EXTMEM_PRO_ICACHE_MASK_IRAM1);
     }
     rc = Cache_Ibus_MMU_Set(MMU_ACCESS_FLASH, irom_load_addr & 0xffff0000, irom_addr & 0xffff0000, 64, irom_page_count, 0);
+#elif CONFIG_IDF_TARGET_ESP32S3
+    rc = Cache_Ibus_MMU_Set(MMU_ACCESS_FLASH, irom_load_addr & 0xffff0000, irom_addr & 0xffff0000, 64, irom_page_count, 0);
 #endif
     ESP_LOGV(TAG, "rc=%d", rc);
 #if CONFIG_IDF_TARGET_ESP32
@@ -747,11 +757,18 @@ static void set_cache_and_start_app(
                        DPORT_APP_CACHE_MASK_DRAM1 );
 #elif CONFIG_IDF_TARGET_ESP32S2
     REG_CLR_BIT( EXTMEM_PRO_ICACHE_CTRL1_REG, (EXTMEM_PRO_ICACHE_MASK_IRAM0) | (EXTMEM_PRO_ICACHE_MASK_IRAM1 & 0) | EXTMEM_PRO_ICACHE_MASK_DROM0 );
+#elif CONFIG_IDF_TARGET_ESP32S3
+    REG_CLR_BIT(EXTMEM_DCACHE_CTRL1_REG, EXTMEM_DCACHE_SHUT_CORE0_BUS);
+#if !CONFIG_FREERTOS_UNICORE
+    REG_CLR_BIT(EXTMEM_DCACHE_CTRL1_REG, EXTMEM_DCACHE_SHUT_CORE1_BUS);
+#endif
 #endif
 #if CONFIG_IDF_TARGET_ESP32
     Cache_Read_Enable(0);
 #elif CONFIG_IDF_TARGET_ESP32S2
     Cache_Resume_ICache(autoload);
+#elif CONFIG_IDF_TARGET_ESP32S3
+    Cache_Resume_DCache(autoload);
 #endif
     // Application will need to do Cache_Flush(1) and Cache_Read_Enable(1)
 
@@ -769,7 +786,7 @@ void bootloader_reset(void)
 {
 #ifdef BOOTLOADER_BUILD
     bootloader_atexit();
-    ets_delay_us(1000); /* Allow last byte to leave FIFO */
+    esp_rom_delay_us(1000); /* Allow last byte to leave FIFO */
     REG_WRITE(RTC_CNTL_OPTIONS0_REG, RTC_CNTL_SW_SYS_RST);
     while (1) { }       /* This line will never be reached, used to keep gcc happy */
 #else
@@ -823,6 +840,7 @@ void bootloader_debug_buffer(const void *buffer, size_t length, const char *labe
 
 esp_err_t bootloader_sha256_flash_contents(uint32_t flash_offset, uint32_t len, uint8_t *digest)
 {
+
     if (digest == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -839,7 +857,7 @@ esp_err_t bootloader_sha256_flash_contents(uint32_t flash_offset, uint32_t len, 
     while (len > 0) {
         uint32_t mmu_page_offset = ((flash_offset & MMAP_ALIGNED_MASK) != 0) ? 1 : 0; /* Skip 1st MMU Page if it is already populated */
         uint32_t partial_image_len = MIN(len, ((mmu_free_pages_count - mmu_page_offset) * SPI_FLASH_MMU_PAGE_SIZE)); /* Read the image that fits in the free MMU pages */
-        
+
         const void * image = bootloader_mmap(flash_offset, partial_image_len);
         if (image == NULL) {
             bootloader_sha256_finish(sha_handle, NULL);

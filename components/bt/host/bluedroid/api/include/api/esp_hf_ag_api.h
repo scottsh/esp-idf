@@ -301,8 +301,8 @@ esp_err_t esp_bt_hf_disconnect_audio(esp_bd_addr_t remote_bda);
  * @brief           Response of Volume Recognition Command(AT+VRA) from HFP client. As a precondition to use this API,
  *                  Service Level Connection shall exist with HFP client.
  *
- * @param[in]       remote_bda: volume control target, speaker or microphone
- * @param[in]       value: gain of the speaker of microphone, ranges 0 to 15
+ * @param[in]       remote_bda: the device address of voice recognization initiator
+ * @param[in]       value: 0 - voice recognition disabled, 1- voice recognition enabled
  *
  * @return
  *                  - ESP_OK: disconnect request is sent to lower layer
@@ -402,7 +402,7 @@ esp_err_t esp_bt_hf_indchange_notification(esp_bd_addr_t remote_addr, esp_hf_cal
  */
 esp_err_t esp_bt_hf_cind_response(esp_bd_addr_t remote_addr,
                                 esp_hf_call_status_t call_state,
-                                esp_hf_call_setup_status_t call_setup_state, 
+                                esp_hf_call_setup_status_t call_setup_state,
                                 esp_hf_network_state_t ntk_state, int signal, esp_hf_roaming_status_t roam, int batt_lev,
                                 esp_hf_call_held_status_t call_held_status);
 
@@ -423,7 +423,7 @@ esp_err_t esp_bt_hf_cops_response(esp_bd_addr_t remote_addr, char *name);
 
 /**
  *
- * @brief           Response to AT+CLCC command from HFP Client. 
+ * @brief           Response to AT+CLCC command from HFP Client.
  *                  As a precondition to use this API, Service Level Connection shall exist between AG and HF Client.
  *
  * @param[in]       remote_addr: remote bluetooth device address

@@ -31,11 +31,12 @@ API Guides
     :esp32: RF Calibration <RF_calibration>
     ROM debug console <romconsole>
     :esp32: Secure Boot <../security/secure-boot-v1>
-    :esp32: Secure Boot V2 <../security/secure-boot-v2>
+    Secure Boot V2 <../security/secure-boot-v2>
     Thread Local Storage <thread-local-storage>
     Tools <tools/index>
     ULP Coprocessor <ulp>
     :esp32: ULP Coprocessor (Legacy GNU Make) <ulp-legacy>
+    :esp32s2: ULP-RISC-V Coprocessor <ulp-risc-v>
     Unit Testing <unit-tests>
     :esp32: Unit Testing (Legacy GNU Make) <unit-tests-legacy>
     :esp32s2: USB Console <usb-console>

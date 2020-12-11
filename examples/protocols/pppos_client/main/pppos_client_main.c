@@ -17,6 +17,7 @@
 #include "esp_log.h"
 #include "sim800.h"
 #include "bg96.h"
+#include "sim7600.h"
 
 #define BROKER_URL "mqtt://mqtt.eclipse.org"
 
@@ -172,7 +173,7 @@ static void on_ppp_changed(void *arg, esp_event_base_t event_base,
     ESP_LOGI(TAG, "PPP state changed event %d", event_id);
     if (event_id == NETIF_PPP_ERRORUSER) {
         /* User interrupted event from esp-netif */
-        esp_netif_t *netif = event_data;
+        esp_netif_t *netif = *(esp_netif_t**)event_data;
         ESP_LOGI(TAG, "User interrupted event from netif:%p", netif);
     }
 }
@@ -261,6 +262,8 @@ void app_main(void)
         dce = sim800_init(dte);
 #elif CONFIG_EXAMPLE_MODEM_DEVICE_BG96
         dce = bg96_init(dte);
+#elif CONFIG_EXAMPLE_MODEM_DEVICE_SIM7600
+        dce = sim7600_init(dte);
 #else
 #error "Unsupported DCE"
 #endif
@@ -317,8 +320,10 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(60000));
     }
 
-    /* Destroy the netif adapter withe events, which internally frees also the esp-netif instance */
+    /* Unregister events, destroy the netif adapter and destroy its esp-netif instance */
     esp_modem_netif_clear_default_handlers(modem_netif_adapter);
     esp_modem_netif_teardown(modem_netif_adapter);
+    esp_netif_destroy(esp_netif);
+
     ESP_ERROR_CHECK(dte->deinit(dte));
 }

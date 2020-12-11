@@ -32,14 +32,17 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "test_utils.h"
-#include "soc/spi_reg.h"
 #include "soc/adc_periph.h"
 #include "test/test_common_adc.h"
+#include "esp_rom_sys.h"
 
-#if !DISABLED_FOR_TARGETS(ESP8266, ESP32) // This testcase for ESP32S2
+#if !DISABLED_FOR_TARGETS(ESP8266, ESP32, ESP32S3) // This testcase for ESP32S2
 
 #include "soc/system_reg.h"
+#include "soc/spi_reg.h"
+#include "soc/soc.h"
 #include "soc/lldesc.h"
+#include "test/test_adc_dac_dma.h"
 
 static const char *TAG = "test_adc";
 
@@ -87,9 +90,6 @@ static adc_channel_t adc_list[SOC_ADC_PATT_LEN_MAX] = {
 /* For ESP32S2, it should use same atten, or, it will have error. */
 #define TEST_ADC_ATTEN_DEFAULT (ADC_ATTEN_11db)
 
-/*******************************************/
-/**           SPI DMA INIT CODE            */
-/*******************************************/
 extern esp_err_t adc_digi_reset(void);
 
 /* Work mode.
@@ -99,7 +99,7 @@ extern esp_err_t adc_digi_reset(void);
  * */
 #define SAR_SIMPLE_NUM  512  // Set sample number of enabled unit.
 /* Use two DMA linker to save ADC data. ADC sample 1 times -> 2 byte data -> 2 DMA link buf. */
-#define SAR_DMA_DATA_SIZE(unit, sample_num)     (SAR_EOF_NUMBER(unit, sample_num)) //
+#define SAR_DMA_DATA_SIZE(unit, sample_num)     (SAR_EOF_NUMBER(unit, sample_num))
 #define SAR_EOF_NUMBER(unit, sample_num)        ((sample_num) * (unit))
 #define SAR_MEAS_LIMIT_NUM(unit, sample_num)    (SAR_SIMPLE_NUM)
 #define SAR_SIMPLE_TIMEOUT_MS  1000
@@ -113,7 +113,6 @@ typedef struct dma_msg {
 static uint8_t link_buf[2][SAR_DMA_DATA_SIZE(2, SAR_SIMPLE_NUM)] = {0};
 static lldesc_t dma1 = {0};
 static lldesc_t dma2 = {0};
-static bool adc_dma_flag = false;
 static QueueHandle_t que_adc = NULL;
 static adc_dma_event_t adc_evt;
 
@@ -137,34 +136,13 @@ static IRAM_ATTR void adc_dma_isr(void *arg)
     }
 }
 
-/** Register ADC-DMA handler. */
-static esp_err_t adc_dma_isr_register(void (*fun)(void *), void *arg)
-{
-    esp_err_t ret = ESP_FAIL;
-    ret = esp_intr_alloc(ETS_SPI3_DMA_INTR_SOURCE, 0, fun, arg, NULL);
-    return ret;
-}
-
-/** Reset DMA linker pointer and start DMA. */
-static void dma_linker_restart(void)
-{
-    REG_SET_BIT(SPI_DMA_IN_LINK_REG(3), SPI_INLINK_STOP);
-    REG_CLR_BIT(SPI_DMA_IN_LINK_REG(3), SPI_INLINK_START);
-    SET_PERI_REG_BITS(SPI_DMA_IN_LINK_REG(3), SPI_INLINK_ADDR, (uint32_t)&dma1, 0);
-    REG_SET_BIT(SPI_DMA_CONF_REG(3), SPI_IN_RST);
-    REG_CLR_BIT(SPI_DMA_CONF_REG(3), SPI_IN_RST);
-    REG_CLR_BIT(SPI_DMA_IN_LINK_REG(3), SPI_INLINK_STOP);
-    REG_SET_BIT(SPI_DMA_IN_LINK_REG(3), SPI_INLINK_START);
-}
-
 /**
  * DMA liner initialization and start.
  * @param is_loop
  *     - true: The two dma linked lists are connected end to end, with no end mark (eof).
  *     - false: The two dma linked lists are connected end to end, with end mark (eof).
- * @param int_mask DMA interrupt types.
  */
-static void dma_linker_init(adc_unit_t adc, bool is_loop, uint32_t int_mask)
+static uint32_t adc_dma_linker_init(adc_unit_t adc, bool is_loop)
 {
     dma1 = (lldesc_t) {
         .size = SAR_DMA_DATA_SIZE((adc > 2) ? 2 : 1, SAR_SIMPLE_NUM),
@@ -182,25 +160,8 @@ static void dma_linker_init(adc_unit_t adc, bool is_loop, uint32_t int_mask)
     } else {
         dma2.qe.stqe_next = NULL;
     }
-    REG_SET_BIT(DPORT_PERIP_CLK_EN_REG, DPORT_APB_SARADC_CLK_EN_M);
-    REG_SET_BIT(DPORT_PERIP_CLK_EN_REG, DPORT_SPI3_DMA_CLK_EN_M);
-    REG_SET_BIT(DPORT_PERIP_CLK_EN_REG, DPORT_SPI3_CLK_EN);
-    REG_CLR_BIT(DPORT_PERIP_RST_EN_REG, DPORT_SPI3_DMA_RST_M);
-    REG_CLR_BIT(DPORT_PERIP_RST_EN_REG, DPORT_SPI3_RST_M);
-    if (!adc_dma_flag) {
-        que_adc = xQueueCreate(5, sizeof(adc_dma_event_t));
-        adc_dma_isr_register(adc_dma_isr, NULL);
-        adc_dma_flag = true;
-    }
-    REG_WRITE(SPI_DMA_INT_CLR_REG(3), 0xFFFFFFFF);
-    REG_WRITE(SPI_DMA_INT_ENA_REG(3), int_mask);
-    dma_linker_restart();
-    printf("reg addr 0x%08x 0x%08x \n", SPI_DMA_IN_LINK_REG(3), (uint32_t)&dma1);
+    return (uint32_t)&dma1;
 }
-
-/*******************************************/
-/**           SPI DMA INIT CODE END        */
-/*******************************************/
 
 #define DEBUG_CHECK_ENABLE  1
 #define DEBUG_PRINT_ENABLE  1
@@ -219,7 +180,7 @@ static esp_err_t adc_dma_data_check(adc_unit_t adc, int ideal_level)
     int unit_old = 1;
     int ch_cnt = 0;
     for (int cnt = 0; cnt < 2; cnt++) {
-        ets_printf("\n[%s] link_buf[%d]: \n", __func__, cnt % 2);
+        esp_rom_printf("\n[%s] link_buf[%d]: \n", __func__, cnt % 2);
         for (int i = 0; i < SAR_DMA_DATA_SIZE((adc > 2) ? 2 : 1, SAR_SIMPLE_NUM); i += 2) {
             uint8_t h = link_buf[cnt % 2][i + 1], l = link_buf[cnt % 2][i];
             uint16_t temp = (h << 8 | l);
@@ -228,9 +189,9 @@ static esp_err_t adc_dma_data_check(adc_unit_t adc, int ideal_level)
             if (adc > ADC_UNIT_2) {  //ADC_ENCODE_11BIT
 #if DEBUG_PRINT_ENABLE
                 if (i % 16 == 0) {
-                    ets_printf("\n");
+                    esp_rom_printf("\n");
                 }
-                ets_printf("[%d_%d_%04x] ", data->type2.unit, data->type2.channel, data->type2.data);
+                esp_rom_printf("[%d_%d_%04x] ", data->type2.unit, data->type2.channel, data->type2.data);
 #endif
 #if DEBUG_CHECK_ENABLE
                 if (ideal_level >= 0) {
@@ -256,9 +217,9 @@ static esp_err_t adc_dma_data_check(adc_unit_t adc, int ideal_level)
             } else {        //ADC_ENCODE_12BIT
 #if DEBUG_PRINT_ENABLE
                 if (i % 16 == 0) {
-                    ets_printf("\n");
+                    esp_rom_printf("\n");
                 }
-                ets_printf("[%d_%04x] ", data->type1.channel, data->type1.data);
+                esp_rom_printf("[%d_%04x] ", data->type1.channel, data->type1.data);
 #endif
 #if DEBUG_CHECK_ENABLE
                 if (ideal_level >= 0) {
@@ -279,12 +240,12 @@ static esp_err_t adc_dma_data_check(adc_unit_t adc, int ideal_level)
             link_buf[cnt % 2][i] = 0;
             link_buf[cnt % 2][i + 1] = 0;
         }
-        ets_printf("\n");
+        esp_rom_printf("\n");
     }
     return ESP_OK;
 }
 
-static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc)
+static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc, void *dma_addr, uint32_t int_mask)
 {
     adc_dma_event_t evt;
 
@@ -300,7 +261,7 @@ static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc)
         }
     }
     TEST_ESP_OK( adc_digi_stop() );
-    dma_linker_restart();
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
     adc_digi_reset();
     TEST_ESP_OK( adc_dma_data_check(adc, -1) ); // Don't check data.
 
@@ -316,7 +277,7 @@ static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc)
         }
     }
     TEST_ESP_OK( adc_digi_stop() );
-    dma_linker_restart();
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
     adc_digi_reset();
     TEST_ESP_OK( adc_dma_data_check(adc, 1) );
 
@@ -332,7 +293,7 @@ static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc)
         }
     }
     TEST_ESP_OK( adc_digi_stop() );
-    dma_linker_restart();
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
     adc_digi_reset();
     TEST_ESP_OK( adc_dma_data_check(adc, 0) );
 
@@ -348,7 +309,7 @@ static esp_err_t adc_dma_data_multi_st_check(adc_unit_t adc)
         }
     }
     TEST_ESP_OK( adc_digi_stop() );
-    dma_linker_restart();
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
     adc_digi_reset();
     TEST_ESP_OK( adc_dma_data_check(adc, 2) );
 
@@ -468,12 +429,24 @@ int test_adc_dig_dma_single_unit(adc_unit_t adc)
     }
     TEST_ESP_OK( adc_digi_controller_config(&config) );
 
-    dma_linker_init(adc, false, SPI_IN_SUC_EOF_INT_ENA);
+    /* ADC-DMA linker init */
+    if (que_adc == NULL) {
+        que_adc = xQueueCreate(5, sizeof(adc_dma_event_t));
+    } else {
+        xQueueReset(que_adc);
+    }
+    uint32_t int_mask = SPI_IN_SUC_EOF_INT_ENA;
+    uint32_t dma_addr = adc_dma_linker_init(adc, false);
+    adc_dac_dma_isr_register(adc_dma_isr, NULL, int_mask);
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
 
     TEST_ESP_OK( adc_check_patt_table(adc, adc_test_num, adc_list[adc_test_num - 1]) );
-    adc_dma_data_multi_st_check(adc);
+    adc_dma_data_multi_st_check(adc, (void *)dma_addr, int_mask);
 
+    adc_dac_dma_linker_deinit();
+    adc_dac_dma_isr_deregister(adc_dma_isr, NULL);
     TEST_ESP_OK( adc_digi_deinit() );
+
     return 0;
 }
 
@@ -564,7 +537,16 @@ int test_adc_dig_scope_debug_unit(adc_unit_t adc)
     }
     TEST_ESP_OK( adc_digi_controller_config(&config) );
 
-    dma_linker_init(adc, false, SPI_IN_DONE_INT_ENA & SPI_IN_SUC_EOF_INT_ENA);
+        /* ADC-DMA linker init */
+    if (que_adc == NULL) {
+        que_adc = xQueueCreate(5, sizeof(adc_dma_event_t));
+    } else {
+        xQueueReset(que_adc);
+    }
+    uint32_t int_mask = SPI_IN_SUC_EOF_INT_ENA;
+    uint32_t dma_addr = adc_dma_linker_init(adc, false);
+    adc_dac_dma_isr_register(adc_dma_isr, NULL, int_mask);
+    adc_dac_dma_linker_start(DMA_ONLY_ADC_INLINK, (void *)dma_addr, int_mask);
 
     ESP_LOGI(TAG, "adc IO fake tie middle, test ...");
     for (int i = 0; i < adc_test_num; i++) {
@@ -580,9 +562,9 @@ static void scope_output(int adc_num, int channel, int data)
 #if SCOPE_OUTPUT_UART
     static int icnt = 0;
     if (icnt++ % 8 == 0) {
-        ets_printf("\n");
+        esp_rom_printf("\n");
     }
-    ets_printf("[%d_%d_%04x] ", adc_num, channel, data);
+    esp_rom_printf("[%d_%d_%04x] ", adc_num, channel, data);
     return;
 #endif
 #if SCOPE_DEBUG_TYPE == 0
@@ -629,10 +611,9 @@ TEST_CASE("test_adc_digi_slope_debug", "[adc_dma][ignore]")
         TEST_ASSERT_EQUAL( xQueueReceive(que_adc, &evt, portMAX_DELAY), pdTRUE );
         if (evt.int_msk & SPI_IN_SUC_EOF_INT_ST) {
             TEST_ESP_OK( adc_digi_stop() );
-            dma_linker_restart();
             adc_digi_reset();
             for (int cnt = 0; cnt < 2; cnt++) {
-                ets_printf("cnt%d\n", cnt);
+                esp_rom_printf("cnt%d\n", cnt);
                 for (int i = 0; i < SAR_DMA_DATA_SIZE((adc > 2) ? 2 : 1, SAR_SIMPLE_NUM); i += 2) {
                     uint8_t h = link_buf[cnt % 2][i + 1], l = link_buf[cnt % 2][i];
                     uint16_t temp = (h << 8 | l);

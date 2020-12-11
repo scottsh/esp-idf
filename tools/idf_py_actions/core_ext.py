@@ -13,7 +13,6 @@ from idf_py_actions.tools import ensure_build_directory, idf_version, merge_acti
 
 
 def action_extensions(base_actions, project_path):
-
     def build_target(target_name, ctx, args):
         """
         Execute the target build system to build target 'target_name'
@@ -23,6 +22,10 @@ def action_extensions(base_actions, project_path):
         """
         ensure_build_directory(args, ctx.info_name)
         run_target(target_name, args)
+
+    def list_build_system_targets(target_name, ctx, args):
+        """Shows list of targets known to build sytem (make/ninja)"""
+        build_target('help', ctx, args)
 
     def menuconfig(target_name, ctx, args, style):
         """
@@ -137,8 +140,10 @@ def action_extensions(base_actions, project_path):
                 os.remove(file_to_delete)
 
     def set_target(action, ctx, args, idf_target):
-        if(not args["preview"] and idf_target in PREVIEW_TARGETS):
-            raise FatalError("%s is still in preview. You have to append '--preview' option after idf.py to use any preview feature." % idf_target)
+        if (not args["preview"] and idf_target in PREVIEW_TARGETS):
+            raise FatalError(
+                "%s is still in preview. You have to append '--preview' option after idf.py to use any preview feature."
+                % idf_target)
         args.define_cache_entry.append("IDF_TARGET=" + idf_target)
         sdkconfig_path = os.path.join(args.project_dir, 'sdkconfig')
         sdkconfig_old = sdkconfig_path + ".old"
@@ -194,17 +199,18 @@ def action_extensions(base_actions, project_path):
                 "help": "Show IDF version and exit.",
                 "is_flag": True,
                 "expose_value": False,
-                "callback": idf_version_callback
+                "callback": idf_version_callback,
             },
             {
                 "names": ["--list-targets"],
                 "help": "Print list of supported targets and exit.",
                 "is_flag": True,
                 "expose_value": False,
-                "callback": list_targets_callback
+                "callback": list_targets_callback,
             },
             {
                 "names": ["-C", "--project-dir"],
+                "scope": "shared",
                 "help": "Project directory.",
                 "type": click.Path(),
                 "default": os.getcwd(),
@@ -216,8 +222,10 @@ def action_extensions(base_actions, project_path):
                 "default": None,
             },
             {
-                "names": ["-n", "--no-warnings"],
-                "help": "Disable Cmake warnings.",
+                "names": ["-w/-n", "--cmake-warn-uninitialized/--no-warnings"],
+                "help": ("Enable CMake uninitialized variable warnings for CMake files inside the project directory. "
+                         "(--no-warnings is now the default, and doesn't need to be specified.)"),
+                "envvar": "IDF_CMAKE_WARN_UNINITIALIZED",
                 "is_flag": True,
                 "default": False,
             },
@@ -227,7 +235,7 @@ def action_extensions(base_actions, project_path):
                 "is_flag": True,
                 "is_eager": True,
                 "default": False,
-                "callback": verbose_callback
+                "callback": verbose_callback,
             },
             {
                 "names": ["--preview"],
@@ -237,11 +245,10 @@ def action_extensions(base_actions, project_path):
             },
             {
                 "names": ["--ccache/--no-ccache"],
-                "help": (
-                    "Use ccache in build. Disabled by default, unless "
-                    "IDF_CCACHE_ENABLE environment variable is set to a non-zero value."),
+                "help": "Use ccache in build. Disabled by default.",
                 "is_flag": True,
-                "default": os.getenv("IDF_CCACHE_ENABLE") not in [None, "", "0"],
+                "envvar": "IDF_CCACHE_ENABLE",
+                "default": False,
             },
             {
                 "names": ["-G", "--generator"],
@@ -253,7 +260,7 @@ def action_extensions(base_actions, project_path):
                 "help": "Only process arguments, but don't execute actions.",
                 "is_flag": True,
                 "hidden": True,
-                "default": False
+                "default": False,
             },
         ],
         "global_action_callbacks": [validate_root_options],
@@ -291,14 +298,15 @@ def action_extensions(base_actions, project_path):
                         "names": ["--style", "--color-scheme", "style"],
                         "help": (
                             "Menuconfig style.\n"
-                            "Is it possible to customize the menuconfig style by either setting the MENUCONFIG_STYLE "
-                            "environment variable or through this option. The built-in styles include:\n\n"
+                            "The built-in styles include:\n\n"
                             "- default - a yellowish theme,\n\n"
-                            "- monochrome -  a black and white theme, or\n"
+                            "- monochrome -  a black and white theme, or\n\n"
                             "- aquatic - a blue theme.\n\n"
-                            "The default value is \"aquatic\". It is possible to customize these themes further "
-                            "as it is described in the Color schemes section of the kconfiglib documentation."),
-                        "default": os.environ.get('MENUCONFIG_STYLE', 'aquatic'),
+                            "It is possible to customize these themes further"
+                            " as it is described in the Color schemes section of the kconfiglib documentation.\n"
+                            'The default value is \"aquatic\".'),
+                        "envvar": "MENUCONFIG_STYLE",
+                        "default": "aquatic",
                     }
                 ],
             },
@@ -370,10 +378,14 @@ def action_extensions(base_actions, project_path):
                 "help": "Read otadata partition.",
                 "options": global_options,
             },
+            "build-system-targets": {
+                "callback": list_build_system_targets,
+                "help": "Print list of build system targets.",
+            },
             "fallback": {
                 "callback": fallback_target,
                 "help": "Handle for targets not known for idf.py.",
-                "hidden": True
+                "hidden": True,
             }
         }
     }

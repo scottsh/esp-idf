@@ -20,7 +20,7 @@
 #include <esp_log.h>
 #include <esp_attr.h>
 #include <esp_spi_flash.h>
-#include <bootloader_flash.h>
+#include <bootloader_flash_priv.h>
 #include <bootloader_random.h>
 #include <bootloader_sha.h>
 #include "bootloader_util.h"
@@ -32,6 +32,9 @@
 #elif CONFIG_IDF_TARGET_ESP32S2
 #include "esp32s2/rom/rtc.h"
 #include "esp32s2/rom/secure_boot.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/rom/rtc.h"
+#include "esp32s3/rom/secure_boot.h"
 #endif
 
 /* Checking signatures as part of verifying images is necessary:
@@ -209,7 +212,7 @@ static esp_err_t image_load(esp_image_load_mode_t mode, const esp_partition_pos_
         bool verify_sha;
 #if CONFIG_SECURE_BOOT_V2_ENABLED
         verify_sha = true;
-#else // ESP32, or ESP32S2 without secure boot enabled
+#else // Secure boot not enabled
         verify_sha = (data->start_addr != ESP_BOOTLOADER_OFFSET);
 #endif
 
@@ -234,6 +237,12 @@ static esp_err_t image_load(esp_image_load_mode_t mode, const esp_partition_pos_
             // No secure boot, but SHA-256 can be appended for basic corruption detection
             if (sha_handle != NULL && !esp_cpu_in_ocd_debug_mode()) {
                 err = verify_simple_hash(sha_handle, data);
+#ifdef CONFIG_IDF_ENV_FPGA
+                if (err != ESP_OK) {
+                    ESP_LOGW(TAG, "Ignoring invalid SHA-256 as running on FPGA");
+                    err = ESP_OK;
+                }
+#endif
                 sha_handle = NULL; // calling verify_simple_hash finishes sha_handle
             }
 #endif // SECURE_BOOT_CHECK_SIGNATURE
@@ -275,7 +284,7 @@ static esp_err_t image_load(esp_image_load_mode_t mode, const esp_partition_pos_
        "only verify signature in bootloader" into the macro so it's tested multiple times.
      */
 #if CONFIG_SECURE_BOOT_V2_ENABLED
-    ESP_FAULT_ASSERT(memcmp(image_digest, verified_digest, HASH_LEN) == 0);
+    ESP_FAULT_ASSERT(!esp_secure_boot_enabled() || memcmp(image_digest, verified_digest, HASH_LEN) == 0);
 #else // Secure Boot V1 on ESP32, only verify signatures for apps not bootloaders
     ESP_FAULT_ASSERT(data->start_addr == ESP_BOOTLOADER_OFFSET || memcmp(image_digest, verified_digest, HASH_LEN) == 0);
 #endif
@@ -310,7 +319,7 @@ err:
     // Prevent invalid/incomplete data leaking out
     bzero(data, sizeof(esp_image_metadata_t));
     return err;
-    }
+}
 
 esp_err_t bootloader_load_image(const esp_partition_pos_t *part, esp_image_metadata_t *data)
 {
@@ -849,4 +858,22 @@ static esp_err_t verify_simple_hash(bootloader_sha256_handle_t sha_handle, esp_i
 
     bootloader_munmap(hash);
     return ESP_OK;
+}
+
+int esp_image_get_flash_size(esp_image_flash_size_t app_flash_size)
+{
+    switch (app_flash_size) {
+    case ESP_IMAGE_FLASH_SIZE_1MB:
+        return 1 * 1024 * 1024;
+    case ESP_IMAGE_FLASH_SIZE_2MB:
+        return 2 * 1024 * 1024;
+    case ESP_IMAGE_FLASH_SIZE_4MB:
+        return 4 * 1024 * 1024;
+    case ESP_IMAGE_FLASH_SIZE_8MB:
+        return 8 * 1024 * 1024;
+    case ESP_IMAGE_FLASH_SIZE_16MB:
+        return 16 * 1024 * 1024;
+    default:
+        return 0;
+    }
 }

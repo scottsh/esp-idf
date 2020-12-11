@@ -213,6 +213,12 @@ static const esp_err_msg_t esp_err_msg_table[] = {
                                                                                 API functions.  NVS key is different in
                                                                                 comparison */
 #   endif
+#   ifdef      ESP_ERR_NVS_WRONG_ENCRYPTION
+    ERR_TBL_IT(ESP_ERR_NVS_WRONG_ENCRYPTION),                   /*  4377 0x1119 NVS partition is marked as encrypted
+                                                                                with generic flash encryption. This is
+                                                                                forbidden since the NVS encryption works
+                                                                                differently. */
+#   endif
     // components/ulp/include/ulp_common.h
 #   ifdef      ESP_ERR_ULP_BASE
     ERR_TBL_IT(ESP_ERR_ULP_BASE),                               /*  4608 0x1200 Offset for ULP-related error codes */
@@ -354,6 +360,12 @@ static const esp_err_msg_t esp_err_msg_table[] = {
 #   endif
 #   ifdef      ESP_ERR_WIFI_STOP_STATE
     ERR_TBL_IT(ESP_ERR_WIFI_STOP_STATE),                        /* 12308 0x3014 Returned when WiFi is stopping */
+#   endif
+#   ifdef      ESP_ERR_WIFI_NOT_ASSOC
+    ERR_TBL_IT(ESP_ERR_WIFI_NOT_ASSOC),                         /* 12309 0x3015 The WiFi connection is not associated */
+#   endif
+#   ifdef      ESP_ERR_WIFI_TX_DISALLOW
+    ERR_TBL_IT(ESP_ERR_WIFI_TX_DISALLOW),                       /* 12310 0x3016 The WiFi TX is disallowed */
 #   endif
     // components/wpa_supplicant/include/esp_supplicant/esp_wps.h
 #   ifdef      ESP_ERR_WIFI_REGISTRAR
@@ -521,7 +533,7 @@ static const esp_err_msg_t esp_err_msg_table[] = {
 #   ifdef      ESP_ERR_FLASH_OP_TIMEOUT
     ERR_TBL_IT(ESP_ERR_FLASH_OP_TIMEOUT),                       /* 24578 0x6002 */
 #   endif
-    // components/soc/include/hal/esp_flash_err.h
+    // components/hal/include/hal/esp_flash_err.h
 #   ifdef      ESP_ERR_FLASH_NOT_INITIALISED
     ERR_TBL_IT(ESP_ERR_FLASH_NOT_INITIALISED),                  /* 24579 0x6003 */
 #   endif

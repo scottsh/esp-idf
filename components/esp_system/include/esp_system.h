@@ -250,7 +250,7 @@ esp_err_t esp_derive_local_mac(uint8_t* local_mac, const uint8_t* universal_mac)
 
 /**
  * @brief Trigger a software abort
- * 
+ *
  * @param details Details that will be displayed during panic handling.
  */
 void  __attribute__((noreturn)) esp_system_abort(const char* details);
@@ -285,6 +285,7 @@ typedef struct {
  * @param[out] out_info structure to be filled
  */
 void esp_chip_info(esp_chip_info_t* out_info);
+
 
 #if CONFIG_ESP32_ECO3_CACHE_LOCK_FIX
 /**

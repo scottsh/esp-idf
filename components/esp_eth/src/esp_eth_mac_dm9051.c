@@ -29,6 +29,7 @@
 #include "dm9051.h"
 #include "sdkconfig.h"
 #include "esp_rom_gpio.h"
+#include "esp_rom_sys.h"
 
 static const char *TAG = "emac_dm9051";
 #define MAC_CHECK(a, str, goto_tag, ret_value, ...)                               \
@@ -62,6 +63,7 @@ typedef struct {
     int int_gpio_num;
     uint8_t addr[6];
     bool packets_remain;
+    bool flow_ctrl_enabled;
 } emac_dm9051_t;
 
 static inline bool dm9051_lock(emac_dm9051_t *emac)
@@ -302,12 +304,6 @@ static esp_err_t dm9051_setup_default(emac_dm9051_t *emac)
     /* stop receiving, no promiscuous mode, no runt packet(size < 64bytes), not all multicast packets*/
     /* discard long packet(size > 1522bytes) and crc error packet, enable watchdog */
     MAC_CHECK(dm9051_register_write(emac, DM9051_RCR, RCR_DIS_LONG | RCR_DIS_CRC) == ESP_OK, "write RCR failed", err, ESP_FAIL);
-    /* send jam pattern (duration time = 1.15ms) when rx free space < 3k bytes */
-    MAC_CHECK(dm9051_register_write(emac, DM9051_BPTR, 0x3F) == ESP_OK, "write BPTR failed", err, ESP_FAIL);
-    /* flow control: high water threshold = 3k bytes, low water threshold = 8k bytes */
-    MAC_CHECK(dm9051_register_write(emac, DM9051_FCTR, 0x38) == ESP_OK, "write FCTR failed", err, ESP_FAIL);
-    /* enable flow control */
-    MAC_CHECK(dm9051_register_write(emac, DM9051_FCR, FCR_FLOW_ENABLE) == ESP_OK, "write FCR failed", err, ESP_FAIL);
     /* retry late collision packet, at most two transmit command can be issued before transmit complete */
     MAC_CHECK(dm9051_register_write(emac, DM9051_TCR2, TCR2_RLCP) == ESP_OK, "write TCR2 failed", err, ESP_FAIL);
     /* enable auto transmit */
@@ -331,6 +327,25 @@ static esp_err_t dm9051_setup_default(emac_dm9051_t *emac)
     MAC_CHECK(dm9051_register_write(emac, DM9051_NSR, NSR_WAKEST | NSR_TX2END | NSR_TX1END) == ESP_OK, "write NSR failed", err, ESP_FAIL);
     /* clear interrupt status */
     MAC_CHECK(dm9051_register_write(emac, DM9051_ISR, ISR_CLR_STATUS) == ESP_OK, "write ISR failed", err, ESP_FAIL);
+    return ESP_OK;
+err:
+    return ret;
+}
+
+static esp_err_t dm9051_enable_flow_ctrl(emac_dm9051_t *emac, bool enable)
+{
+    esp_err_t ret = ESP_OK;
+    if (enable) {
+        /* send jam pattern (duration time = 1.15ms) when rx free space < 3k bytes */
+        MAC_CHECK(dm9051_register_write(emac, DM9051_BPTR, 0x3F) == ESP_OK, "write BPTR failed", err, ESP_FAIL);
+        /* flow control: high water threshold = 3k bytes, low water threshold = 8k bytes */
+        MAC_CHECK(dm9051_register_write(emac, DM9051_FCTR, 0x38) == ESP_OK, "write FCTR failed", err, ESP_FAIL);
+        /* enable flow control */
+        MAC_CHECK(dm9051_register_write(emac, DM9051_FCR, FCR_FLOW_ENABLE) == ESP_OK, "write FCR failed", err, ESP_FAIL);
+    } else {
+        /* disable flow control */
+        MAC_CHECK(dm9051_register_write(emac, DM9051_FCR, 0) == ESP_OK, "write FCR failed", err, ESP_FAIL);
+    }
     return ESP_OK;
 err:
     return ret;
@@ -393,7 +408,7 @@ static void emac_dm9051_task(void *arg)
     uint32_t length = 0;
     while (1) {
         // block indefinitely until some task notifies me
-        ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         /* clear interrupt status */
         dm9051_register_read(emac, DM9051_ISR, &status);
         dm9051_register_write(emac, DM9051_ISR, status);
@@ -450,7 +465,7 @@ static esp_err_t emac_dm9051_write_phy_reg(esp_eth_mac_t *mac, uint32_t phy_addr
     /* polling the busy flag */
     uint32_t to = 0;
     do {
-        ets_delay_us(100);
+        esp_rom_delay_us(100);
         MAC_CHECK(dm9051_register_read(emac, DM9051_EPCR, &epcr) == ESP_OK, "read EPCR failed", err, ESP_FAIL);
         to += 100;
     } while ((epcr & EPCR_ERRE) && to < DM9051_PHY_OPERATION_TIMEOUT_US);
@@ -476,7 +491,7 @@ static esp_err_t emac_dm9051_read_phy_reg(esp_eth_mac_t *mac, uint32_t phy_addr,
     /* polling the busy flag */
     uint32_t to = 0;
     do {
-        ets_delay_us(100);
+        esp_rom_delay_us(100);
         MAC_CHECK(dm9051_register_read(emac, DM9051_EPCR, &epcr) == ESP_OK, "read EPCR failed", err, ESP_FAIL);
         to += 100;
     } while ((epcr & EPCR_ERRE) && to < DM9051_PHY_OPERATION_TIMEOUT_US);
@@ -603,6 +618,27 @@ err:
     return ret;
 }
 
+static esp_err_t emac_dm9051_enable_flow_ctrl(esp_eth_mac_t *mac, bool enable)
+{
+    emac_dm9051_t *emac = __containerof(mac, emac_dm9051_t, parent);
+    emac->flow_ctrl_enabled = enable;
+    return ESP_OK;
+}
+
+static esp_err_t emac_dm9051_set_peer_pause_ability(esp_eth_mac_t *mac, uint32_t ability)
+{
+    emac_dm9051_t *emac = __containerof(mac, emac_dm9051_t, parent);
+    // we want to enable flow control, and peer does support pause function
+    // then configure the MAC layer to enable flow control feature
+    if (emac->flow_ctrl_enabled && ability) {
+        dm9051_enable_flow_ctrl(emac, true);
+    } else {
+        dm9051_enable_flow_ctrl(emac, false);
+        ESP_LOGD(TAG, "Flow control not enabled for the link");
+    }
+    return ESP_OK;
+}
+
 static esp_err_t emac_dm9051_transmit(esp_eth_mac_t *mac, uint8_t *buf, uint32_t length)
 {
     esp_err_t ret = ESP_OK;
@@ -641,7 +677,7 @@ static esp_err_t emac_dm9051_receive(esp_eth_mac_t *mac, uint8_t *buf, uint32_t 
         /* reset rx fifo pointer */
         MAC_CHECK(dm9051_register_write(emac, DM9051_MPTRCR, MPTRCR_RST_RX) == ESP_OK,
                   "write MPTRCR failed", err, ESP_FAIL);
-        ets_delay_us(10);
+        esp_rom_delay_us(10);
         MAC_CHECK(mac->start(mac) == ESP_OK, "start dm9051 failed", err, ESP_FAIL);
         MAC_CHECK(false, "reset rx fifo pointer", err, ESP_FAIL);
     } else if (rxbyte) {
@@ -650,13 +686,12 @@ static esp_err_t emac_dm9051_receive(esp_eth_mac_t *mac, uint8_t *buf, uint32_t 
         rx_len = header.length_low + (header.length_high << 8);
         /* check if the buffer can hold all the incoming data */
         if (*length < rx_len - 4) {
-            ESP_LOGE(TAG, "buffer size too small");
+            ESP_LOGE(TAG, "buffer size too small, needs %d", rx_len - 4);
             /* tell upper layer the size we need */
             *length = rx_len - 4;
             ret = ESP_ERR_INVALID_SIZE;
             goto err;
         }
-        MAC_CHECK(*length >= rx_len - 4, "buffer size too small", err, ESP_ERR_INVALID_SIZE);
         MAC_CHECK(dm9051_memory_read(emac, (uint8_t *)&header, sizeof(header)) == ESP_OK,
                   "read rx header failed", err, ESP_FAIL);
         MAC_CHECK(dm9051_memory_read(emac, buf, rx_len) == ESP_OK, "read rx data failed", err, ESP_FAIL);
@@ -750,6 +785,8 @@ esp_eth_mac_t *esp_eth_mac_new_dm9051(const eth_dm9051_config_t *dm9051_config, 
     emac->parent.set_duplex = emac_dm9051_set_duplex;
     emac->parent.set_link = emac_dm9051_set_link;
     emac->parent.set_promiscuous = emac_dm9051_set_promiscuous;
+    emac->parent.set_peer_pause_ability = emac_dm9051_set_peer_pause_ability;
+    emac->parent.enable_flow_ctrl = emac_dm9051_enable_flow_ctrl;
     emac->parent.transmit = emac_dm9051_transmit;
     emac->parent.receive = emac_dm9051_receive;
     /* create mutex */

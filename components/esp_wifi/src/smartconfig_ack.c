@@ -17,14 +17,17 @@
  * it will use UDP to send 'ACK' to cellphone.
  */
 
-#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "lwip/sockets.h"
 #include "esp_netif.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
+
+#if CONFIG_ESP_NETIF_TCPIP_LWIP
+
+#include <string.h>
+#include "lwip/sockets.h"
 #include "esp_smartconfig.h"
 #include "smartconfig_ack.h"
 
@@ -107,7 +110,7 @@ static void sc_ack_send_task(void *pvParameters)
             send_sock = socket(AF_INET, SOCK_DGRAM, 0);
             if ((send_sock < LWIP_SOCKET_OFFSET) || (send_sock > (FD_SETSIZE - 1))) {
                 ESP_LOGE(TAG,  "Creat udp socket failed");
-                goto _end;	
+                goto _end;
             }
 
             setsockopt(send_sock, SOL_SOCKET, SO_BROADCAST | SO_REUSEADDR, &optval, sizeof(int));
@@ -208,3 +211,5 @@ void sc_send_ack_stop(void)
 {
     s_sc_ack_send = false;
 }
+
+#endif

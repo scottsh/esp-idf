@@ -24,14 +24,14 @@
 #include "esp_types.h"
 #include "esp_log.h"
 #include "spiram_psram.h"
-#include "esp32s2/rom/ets_sys.h"
 #include "esp32s2/rom/spi_flash.h"
 #include "esp32s2/rom/opi_flash.h"
 #include "esp32s2/rom/cache.h"
 #include "esp32s2/rom/efuse.h"
+#include "esp_rom_efuse.h"
 #include "soc/dport_reg.h"
 #include "soc/efuse_periph.h"
-#include "soc/spi_caps.h"
+#include "soc/soc_caps.h"
 #include "soc/io_mux_reg.h"
 #include "soc/apb_ctrl_reg.h"
 #include "soc/efuse_reg.h"
@@ -61,7 +61,7 @@ static const char* TAG = "psram";
 #define PSRAM_RESET                0x99
 #define PSRAM_SET_BURST_LEN        0xC0
 #define PSRAM_DEVICE_ID            0x9F
-// ID 
+// ID
 #define PSRAM_ID_KGD_M          0xff
 #define PSRAM_ID_KGD_S             8
 #define PSRAM_ID_KGD            0x5d
@@ -215,7 +215,7 @@ void psram_exec_cmd(int spi_num, psram_cmd_mode_t mode,
     _psram_exec_cmd(spi_num, cmd, cmd_bit_len, addr, addr_bit_len,
         dummy_bits, mosi_data, mosi_bit_len, miso_data, miso_bit_len);
     esp_rom_spi_cmd_start(spi_num, miso_data, miso_bit_len / 8, cs_mask, is_write_erase_operation);
-    
+
     WRITE_PERI_REG(SPI_MEM_USER_REG(spi_num), backup_usr);
     WRITE_PERI_REG(SPI_MEM_USER1_REG(spi_num), backup_usr1);
     WRITE_PERI_REG(SPI_MEM_USER2_REG(spi_num), backup_usr2);
@@ -362,8 +362,8 @@ static void psram_set_spi0_cache_cs_timing(psram_clk_mode_t clk_mode)
 static void IRAM_ATTR psram_gpio_config(psram_cache_mode_t mode)
 {
     psram_io_t psram_io = PSRAM_IO_CONF_DEFAULT();
-    const uint32_t spiconfig = ets_efuse_get_spiconfig();
-    if (spiconfig == EFUSE_SPICONFIG_SPI_DEFAULTS) {
+    const uint32_t spiconfig = esp_rom_efuse_get_flash_gpio_info();
+    if (spiconfig == ESP_ROM_EFUSE_FLASH_DEFAULT_SPI) {
         /* FLASH pins(except wp / hd) are all configured via IO_MUX in rom. */
     } else {
         // FLASH pins are all configured via GPIO matrix in ROM.
@@ -372,17 +372,9 @@ static void IRAM_ATTR psram_gpio_config(psram_cache_mode_t mode)
         psram_io.psram_spiq_sd0_io  = EFUSE_SPICONFIG_RET_SPIQ(spiconfig);
         psram_io.psram_spid_sd1_io  = EFUSE_SPICONFIG_RET_SPID(spiconfig);
         psram_io.psram_spihd_sd2_io = EFUSE_SPICONFIG_RET_SPIHD(spiconfig);
-        psram_io.psram_spiwp_sd3_io = ets_efuse_get_wp_pad();
+        psram_io.psram_spiwp_sd3_io = esp_rom_efuse_get_flash_wp_gpio();
     }
-
-    #if CONFIG_ESPTOOLPY_FLASHMODE_QIO || CONFIG_FLASHMODE_QOUT
-    // WP/HD already configured in bootloader.
-    psram_io.psram_spiwp_sd3_io = (psram_io.psram_spiwp_sd3_io <= MAX_PAD_GPIO_NUM ? psram_io.psram_spiwp_sd3_io : CONFIG_BOOTLOADER_SPI_WP_PIN);
-    #else
-    
-    psram_io.psram_spiwp_sd3_io = (psram_io.psram_spiwp_sd3_io <= MAX_PAD_GPIO_NUM ? psram_io.psram_spiwp_sd3_io : CONFIG_SPIRAM_SPIWP_SD3_PIN);
     esp_rom_spiflash_select_qio_pins(psram_io.psram_spiwp_sd3_io, spiconfig);
-    #endif
 }
 
 psram_size_t psram_get_size(void)

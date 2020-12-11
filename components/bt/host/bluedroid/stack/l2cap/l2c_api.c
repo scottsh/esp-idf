@@ -120,12 +120,11 @@ void L2CA_Deregister (UINT16 psm)
     tL2C_RCB    *p_rcb;
     tL2C_CCB    *p_ccb;
     tL2C_LCB    *p_lcb;
-    int         ii;
-
+    list_node_t *p_node = NULL;
 
     if ((p_rcb = l2cu_find_rcb_by_psm (psm)) != NULL) {
-        p_lcb = &l2cb.lcb_pool[0];
-        for (ii = 0; ii < MAX_L2CAP_LINKS; ii++, p_lcb++) {
+	for (p_node = list_begin(l2cb.p_lcb_pool); p_node; p_node = list_next(p_node)) {
+	    p_lcb = list_node(p_node);
             if (p_lcb->in_use) {
                 if (((p_ccb = p_lcb->ccb_queue.p_first_ccb) == NULL)
                         || (p_lcb->link_state == LST_DISCONNECTING)) {
@@ -403,7 +402,6 @@ BOOLEAN L2CA_ErtmConnectRsp (BD_ADDR p_bd_addr, UINT8 id, UINT16 lcid, UINT16 re
         L2CAP_TRACE_WARNING ("L2CAP - no LCB for L2CA_conn_rsp");
         return (FALSE);
     }
-
     /* Now, find the channel control block */
     if ((p_ccb = l2cu_find_ccb_by_cid (p_lcb, lcid)) == NULL) {
         L2CAP_TRACE_WARNING ("L2CAP - no CCB for L2CA_conn_rsp");
@@ -815,6 +813,7 @@ BOOLEAN L2CA_SetIdleTimeout (UINT16 cid, UINT16 timeout, BOOLEAN is_global)
 BOOLEAN L2CA_SetIdleTimeoutByBdAddr(BD_ADDR bd_addr, UINT16 timeout, tBT_TRANSPORT transport)
 {
     tL2C_LCB        *p_lcb;
+    list_node_t     *p_node = NULL;
 
     if (memcmp (BT_BD_ANY, bd_addr, BD_ADDR_LEN)) {
         p_lcb = l2cu_find_lcb_by_bd_addr( bd_addr, transport);
@@ -828,10 +827,8 @@ BOOLEAN L2CA_SetIdleTimeoutByBdAddr(BD_ADDR bd_addr, UINT16 timeout, tBT_TRANSPO
             return FALSE;
         }
     } else {
-        int         xx;
-        tL2C_LCB    *p_lcb = &l2cb.lcb_pool[0];
-
-        for (xx = 0; xx < MAX_L2CAP_LINKS; xx++, p_lcb++) {
+	for (p_node = list_begin(l2cb.p_lcb_pool); p_node; p_node = list_next(p_node)) {
+	    p_lcb = list_node(p_node);
             if ((p_lcb->in_use) && (p_lcb->link_state == LST_CONNECTED)) {
                 p_lcb->idle_timeout = timeout;
 
@@ -1188,10 +1185,9 @@ BOOLEAN L2CA_SetFlushTimeout (BD_ADDR bd_addr, UINT16 flush_tout)
             return (FALSE);
         }
     } else {
-        int   xx;
-        p_lcb = &l2cb.lcb_pool[0];
-
-        for (xx = 0; xx < MAX_L2CAP_LINKS; xx++, p_lcb++) {
+        list_node_t *p_node = NULL;
+	for (p_node = list_begin(l2cb.p_lcb_pool); p_node; p_node = list_next(p_node)) {
+	    p_lcb = list_node(p_node);
             if ((p_lcb->in_use) && (p_lcb->link_state == LST_CONNECTED)) {
                 if (p_lcb->link_flush_tout != flush_tout) {
                     p_lcb->link_flush_tout = flush_tout;
@@ -1397,9 +1393,10 @@ void L2CA_DeregisterLECoc(UINT16 psm)
         return;
     }
 
-    tL2C_LCB *p_lcb = &l2cb.lcb_pool[0];
-    for (int i = 0; i < MAX_L2CAP_LINKS; i++, p_lcb++)
-    {
+    tL2C_LCB *p_lcb = NULL;
+    list_node_t *p_node = NULL;
+    for (p_node = list_begin(l2cb.p_lcb_pool); p_node; p_node = list_next(p_node)) {
+        p_lcb = list_node(p_node);
         if (!p_lcb->in_use || p_lcb->transport != BT_TRANSPORT_LE) {
             continue;
         }
@@ -2274,7 +2271,6 @@ UINT16 L2CA_FlushChannel (UINT16 lcid, UINT16 num_to_flush)
     return (num_left);
 }
 
-
 /******************************************************************************
 **
 ** Function         update_acl_pkt_num
@@ -2284,7 +2280,6 @@ UINT16 L2CA_FlushChannel (UINT16 lcid, UINT16 num_to_flush)
 ** Returns          None
 **
 *******************************************************************************/
-
 #if BLE_INCLUDED == TRUE
 void l2ble_update_att_acl_pkt_num(UINT8 type, tl2c_buff_param_t *param)
 {
@@ -2292,28 +2287,38 @@ void l2ble_update_att_acl_pkt_num(UINT8 type, tl2c_buff_param_t *param)
     static INT16 btc_buf;
     static INT16 btu_buf;
 
-    if(buff_semaphore != NULL){
-        xSemaphoreTake(buff_semaphore, 10 / portTICK_PERIOD_MS);
+    if(buff_semaphore == NULL && type != L2CA_BUFF_INI){
+        L2CAP_TRACE_ERROR("%s buff_semaphore not init", __func__);
+        return;
     }
     switch (type)
     {
     case L2CA_ADD_BTC_NUM:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         btc_buf ++;
+        xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_DECREASE_BTC_NUM:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         btc_buf --;
+        xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_ADD_BTU_NUM:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         btu_buf ++;
+        xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_DECREASE_BTU_NUM:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         btu_buf --;
+        xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_GET_ATT_NUM:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         INT16 att_acl_pkt_num = 0;
         INT16 att_max_num = 0;
         *(param->get_num) = 0;
@@ -2321,17 +2326,20 @@ void l2ble_update_att_acl_pkt_num(UINT8 type, tl2c_buff_param_t *param)
         tGATT_TCB * p_tcb = gatt_get_tcb_by_idx(tcb_idx);
         if (p_tcb == NULL){
             L2CAP_TRACE_ERROR("%s not found p_tcb", __func__);
+            xSemaphoreGive(buff_semaphore);
             break;
         }
         tL2C_LCB * p_lcb = l2cu_find_lcb_by_bd_addr (p_tcb->peer_bda, BT_TRANSPORT_LE);
         if (p_lcb == NULL){
             L2CAP_TRACE_ERROR("%s not found p_lcb", __func__);
+            xSemaphoreGive(buff_semaphore);
             break;
         }
         fixed_queue_t * queue = p_lcb->p_fixed_ccbs[L2CAP_ATT_CID - L2CAP_FIRST_FIXED_CHNL]->xmit_hold_q;
         att_max_num = MIN(p_lcb->link_xmit_quota, L2CAP_CACHE_ATT_ACL_NUM);
         if (queue == NULL){
             L2CAP_TRACE_ERROR("%s not found queue", __func__);
+            xSemaphoreGive(buff_semaphore);
             break;
         }
         att_acl_pkt_num = fixed_queue_length(queue);
@@ -2340,23 +2348,31 @@ void l2ble_update_att_acl_pkt_num(UINT8 type, tl2c_buff_param_t *param)
                 *(param->get_num) = att_max_num - att_acl_pkt_num - (btc_buf + btu_buf);
             }
         }
+        xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_BUFF_INI:{
         btc_buf = 0;
         btu_buf = 0;
         buff_semaphore = xSemaphoreCreateBinary();
+        if (buff_semaphore == NULL) {
+            L2CAP_TRACE_ERROR("%s NO MEMORY", __func__);
+            break;
+        }
         xSemaphoreGive(buff_semaphore);
         break;
     }
     case L2CA_BUFF_DEINIT:{
+        xSemaphoreTake(buff_semaphore, portMAX_DELAY);
         btc_buf = 0;
         btu_buf = 0;
+        xSemaphoreGive(buff_semaphore);
+        vSemaphoreDelete(buff_semaphore);
+        buff_semaphore = NULL;
         break;
     }
     default:
         break;
     }
-    xSemaphoreGive(buff_semaphore);
 }
 #endif

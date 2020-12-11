@@ -190,10 +190,7 @@ void app_main(void)
     touch_filter_config_t filter_info = {
         .mode = TOUCH_PAD_FILTER_IIR_16,
         .debounce_cnt = 1,      // 1 time count.
-        .hysteresis_thr = 3,    // 3%
         .noise_thr = 0,         // 50%
-        .noise_neg_thr = 0,     // 50%
-        .neg_noise_limit = 10,  // 10 time count.
         .jitter_step = 4,       // use for jitter mode.
         .smh_lvl = TOUCH_PAD_SMOOTH_IIR_2,
     };
@@ -374,4 +371,3 @@ static void start_ulp_temperature_monitoring(void)
 }
 #endif // CONFIG_IDF_TARGET_ESP32
 #endif // CONFIG_EXAMPLE_ULP_TEMPERATURE_WAKEUP
-

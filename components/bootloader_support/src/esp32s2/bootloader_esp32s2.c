@@ -18,18 +18,18 @@
 #include "soc/gpio_periph.h"
 #include "soc/gpio_sig_map.h"
 #include "soc/io_mux_reg.h"
-#include "esp32s2/rom/efuse.h"
-#include "esp_rom_gpio.h"
-#include "esp32s2/rom/spi_flash.h"
 
 #include "bootloader_init.h"
 #include "bootloader_clock.h"
 #include "bootloader_flash_config.h"
 #include "bootloader_mem.h"
 #include "bootloader_console.h"
+#include "bootloader_flash_priv.h"
 
+#include "esp_rom_gpio.h"
+#include "esp_rom_efuse.h"
+#include "esp_rom_sys.h"
 #include "esp32s2/rom/cache.h"
-#include "esp32s2/rom/ets_sys.h"
 #include "esp32s2/rom/spi_flash.h"
 #include "esp32s2/rom/rtc.h"
 
@@ -46,10 +46,10 @@
 #include <string.h>
 
 static const char *TAG = "boot.esp32s2";
-void bootloader_configure_spi_pins(int drv)
+void IRAM_ATTR bootloader_configure_spi_pins(int drv)
 {
-    const uint32_t spiconfig = ets_efuse_get_spiconfig();
-    uint8_t wp_pin = ets_efuse_get_wp_pad();
+    const uint32_t spiconfig = esp_rom_efuse_get_flash_gpio_info();
+    uint8_t wp_pin = esp_rom_efuse_get_flash_wp_gpio();
     uint8_t clk_gpio_num = SPI_CLK_GPIO_NUM;
     uint8_t q_gpio_num   = SPI_Q_GPIO_NUM;
     uint8_t d_gpio_num   = SPI_D_GPIO_NUM;
@@ -199,8 +199,8 @@ static esp_err_t bootloader_init_spi_flash(void)
 {
     bootloader_init_flash_configure();
 #ifndef CONFIG_SPI_FLASH_ROM_DRIVER_PATCH
-    const uint32_t spiconfig = ets_efuse_get_spiconfig();
-    if (spiconfig != EFUSE_SPICONFIG_SPI_DEFAULTS && spiconfig != EFUSE_SPICONFIG_HSPI_DEFAULTS) {
+    const uint32_t spiconfig = esp_rom_efuse_get_flash_gpio_info();
+    if (spiconfig != ESP_ROM_EFUSE_FLASH_DEFAULT_SPI && spiconfig != ESP_ROM_EFUSE_FLASH_DEFAULT_HSPI) {
         ESP_LOGE(TAG, "SPI flash pins are overridden. Enable CONFIG_SPI_FLASH_ROM_DRIVER_PATCH in menuconfig");
         return ESP_FAIL;
     }
@@ -214,6 +214,8 @@ static esp_err_t bootloader_init_spi_flash(void)
 
     print_flash_info(&bootloader_image_hdr);
     update_flash_config(&bootloader_image_hdr);
+    //ensure the flash is write-protected
+    bootloader_enable_wp();
     return ESP_OK;
 }
 
@@ -274,18 +276,6 @@ static void bootloader_check_wdt_reset(void)
         wdt_reset_info_dump(0);
     }
     wdt_reset_cpu0_info_enable();
-}
-
-void abort(void)
-{
-#if !CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT
-    ets_printf("abort() was called at PC 0x%08x\r\n", (intptr_t)__builtin_return_address(0) - 3);
-#endif
-    if (esp_cpu_in_ocd_debug_mode()) {
-        __asm__("break 0,0");
-    }
-    while (1) {
-    }
 }
 
 static void bootloader_super_wdt_auto_feed(void)

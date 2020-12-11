@@ -17,10 +17,10 @@
 #include "esp_system.h"
 #include "esp_private/system_internal.h"
 #include "esp_attr.h"
-#include "esp_wifi.h"
+#include "esp_efuse.h"
 #include "esp_log.h"
 #include "esp32s2/rom/cache.h"
-#include "esp32s2/rom/uart.h"
+#include "esp_rom_uart.h"
 #include "soc/dport_reg.h"
 #include "soc/gpio_reg.h"
 #include "soc/rtc_cntl_reg.h"
@@ -30,6 +30,7 @@
 #include "soc/syscon_reg.h"
 #include "hal/wdt_hal.h"
 #include "freertos/xtensa_api.h"
+#include "hal/cpu_hal.h"
 
 /* "inner" restart function for after RTOS, interrupts & anything else on this
  * core are already stopped. Stalls other core, resets hardware,
@@ -55,7 +56,7 @@ void IRAM_ATTR esp_restart_noos(void)
     // CPU must be reset before stalling, in case it was running a s32c1i
     // instruction. This would cause memory pool to be locked by arbiter
     // to the stalled CPU, preventing current CPU from accessing this pool.
-    const uint32_t core_id = xPortGetCoreID();
+    const uint32_t core_id = cpu_hal_get_core_id();
 
     //Todo: Refactor to use Interrupt or Task Watchdog API, and a system level WDT context
     // Disable TG0/TG1 watchdogs
@@ -70,8 +71,8 @@ void IRAM_ATTR esp_restart_noos(void)
     wdt_hal_write_protect_enable(&wdt1_context);
 
     // Flush any data left in UART FIFOs
-    uart_tx_wait_idle(0);
-    uart_tx_wait_idle(1);
+    esp_rom_uart_tx_wait_idle(0);
+    esp_rom_uart_tx_wait_idle(1);
     // Disable cache
     Cache_Disable_ICache();
     Cache_Disable_DCache();
@@ -95,7 +96,7 @@ void IRAM_ATTR esp_restart_noos(void)
 
     // Reset timer/spi/uart
     DPORT_SET_PERI_REG_MASK(DPORT_PERIP_RST_EN_REG,
-                            DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_UART_RST);
+                            DPORT_TIMERS_RST | DPORT_SPI01_RST | DPORT_SPI2_RST | DPORT_SPI3_RST | DPORT_SPI2_DMA_RST | DPORT_SPI3_DMA_RST | DPORT_UART_RST);
     DPORT_REG_WRITE(DPORT_PERIP_RST_EN_REG, 0);
 
     // Set CPU back to XTAL source, no PLL, same as hard reset
@@ -112,9 +113,23 @@ void IRAM_ATTR esp_restart_noos(void)
 
 void esp_chip_info(esp_chip_info_t *out_info)
 {
+    uint32_t pkg_ver = esp_efuse_get_pkg_ver();
+
     memset(out_info, 0, sizeof(*out_info));
 
     out_info->model = CHIP_ESP32S2;
     out_info->cores = 1;
     out_info->features = CHIP_FEATURE_WIFI_BGN;
+
+    switch (pkg_ver) {
+    case 0: // ESP32-S2
+        break;
+    case 1: // ESP32-S2FH16
+        // fallthrough
+    case 2: // ESP32-S2FH32
+        out_info->features |= CHIP_FEATURE_EMB_FLASH;
+        break;
+    default: // New package, features unknown
+        break;
+    }
 }

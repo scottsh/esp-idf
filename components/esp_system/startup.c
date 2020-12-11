@@ -26,6 +26,8 @@
 
 #include "soc/soc_caps.h"
 #include "hal/wdt_hal.h"
+#include "hal/uart_types.h"
+#include "hal/uart_ll.h"
 
 #include "esp_system.h"
 #include "esp_log.h"
@@ -53,18 +55,21 @@
 #include "esp_private/usb_console.h"
 #include "esp_vfs_cdcacm.h"
 
+#include "esp_rom_sys.h"
 
 // [refactor-todo] make this file completely target-independent
 #if CONFIG_IDF_TARGET_ESP32
-#include "esp32/rom/uart.h"
-#include "esp32/rom/ets_sys.h"
+#include "esp32/clk.h"
 #include "esp32/spiram.h"
 #include "esp32/brownout.h"
 #elif CONFIG_IDF_TARGET_ESP32S2
-#include "esp32s2/rom/uart.h"
-#include "esp32s2/rom/ets_sys.h"
+#include "esp32s2/clk.h"
 #include "esp32s2/spiram.h"
 #include "esp32s2/brownout.h"
+#elif CONFIG_IDF_TARGET_ESP32S3
+#include "esp32s3/clk.h"
+#include "esp32s3/spiram.h"
+#include "esp32s3/brownout.h"
 #endif
 /***********************************************/
 
@@ -79,8 +84,10 @@
 #define STRINGIFY(s) STRINGIFY2(s)
 #define STRINGIFY2(s) #s
 
+uint64_t g_startup_time = 0;
+
 // App entry point for core 0
-extern void start_app(void);
+extern void esp_startup_start_app(void);
 
 // Entry point for core 0 from hardware init (port layer)
 void start_cpu0(void) __attribute__((weak, alias("start_cpu0_default"))) __attribute__((noreturn));
@@ -90,7 +97,7 @@ void start_cpu0(void) __attribute__((weak, alias("start_cpu0_default"))) __attri
 void start_cpu_other_cores(void) __attribute__((weak, alias("start_cpu_other_cores_default"))) __attribute__((noreturn));
 
 // App entry point for core [1..X]
-void start_app_other_cores(void) __attribute__((weak, alias("start_app_other_cores_default"))) __attribute__((noreturn));
+void esp_startup_start_app_other_cores(void) __attribute__((weak, alias("esp_startup_start_app_other_cores_default"))) __attribute__((noreturn));
 
 static volatile bool s_system_inited[SOC_CPU_CORES_NUM] = { false };
 
@@ -107,14 +114,19 @@ sys_startup_fn_t g_startup_fn[1] = { start_cpu0 };
 
 #ifdef CONFIG_COMPILER_CXX_EXCEPTIONS
 // workaround for C++ exception crashes
-void _Unwind_SetNoFunctionContextInstall(unsigned char enable);
+void _Unwind_SetNoFunctionContextInstall(unsigned char enable) __attribute__((weak, alias("_Unwind_SetNoFunctionContextInstall_Default")));
 // workaround for C++ exception large memory allocation
 void _Unwind_SetEnableExceptionFdeSorting(unsigned char enable);
+
+static IRAM_ATTR void _Unwind_SetNoFunctionContextInstall_Default(unsigned char enable __attribute__((unused)))
+{
+    (void)0;
+}
 #endif // CONFIG_COMPILER_CXX_EXCEPTIONS
 
 static const char* TAG = "cpu_start";
 
-static void IRAM_ATTR do_global_ctors(void)
+static void do_global_ctors(void)
 {
     extern void (*__init_array_start)(void);
     extern void (*__init_array_end)(void);
@@ -134,7 +146,7 @@ static void IRAM_ATTR do_global_ctors(void)
     }
 }
 
-static void IRAM_ATTR do_system_init_fn(void)
+static void do_system_init_fn(void)
 {
     extern esp_system_init_fn_t _esp_system_init_fn_array_start;
     extern esp_system_init_fn_t _esp_system_init_fn_array_end;
@@ -153,10 +165,10 @@ static void IRAM_ATTR do_system_init_fn(void)
 }
 
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
-static void IRAM_ATTR start_app_other_cores_default(void)
+static void  esp_startup_start_app_other_cores_default(void)
 {
     while (1) {
-        ets_delay_us(UINT32_MAX);
+        esp_rom_delay_us(UINT32_MAX);
     }
 }
 
@@ -165,14 +177,14 @@ static void IRAM_ATTR start_cpu_other_cores_default(void)
     do_system_init_fn();
 
     while (!s_system_full_inited) {
-        ets_delay_us(100);
+        esp_rom_delay_us(100);
     }
 
-    start_app_other_cores();
+    esp_startup_start_app_other_cores();
 }
 #endif
 
-static void IRAM_ATTR do_core_init(void)
+static void do_core_init(void)
 {
     /* Initialize heap allocator. WARNING: This *needs* to happen *after* the app cpu has booted.
        If the heap allocator is initialized first, it will put free memory linked list items into
@@ -184,6 +196,7 @@ static void IRAM_ATTR do_core_init(void)
        fail initializing it properly. */
     heap_caps_init();
     esp_setup_syscall_table();
+    esp_newlib_time_init();
 
     if (g_spiram_ok) {
 #if CONFIG_SPIRAM_BOOT_INIT && (CONFIG_SPIRAM_USE_CAPS_ALLOC || CONFIG_SPIRAM_USE_MALLOC)
@@ -229,6 +242,8 @@ static void IRAM_ATTR do_core_init(void)
     esp_flash_encryption_init_checks();
 #endif
 
+    esp_err_t err;
+
 #if CONFIG_SECURE_DISABLE_ROM_DL_MODE
     err = esp_efuse_disable_rom_download_mode();
     assert(err == ESP_OK && "Failed to disable ROM download mode");
@@ -242,11 +257,6 @@ static void IRAM_ATTR do_core_init(void)
 #if CONFIG_ESP32_DISABLE_BASIC_ROM_CONSOLE
     esp_efuse_disable_basic_rom_console();
 #endif
-
-    esp_err_t err;
-
-    esp_timer_init();
-    esp_set_time_from_rtc();
 
     // [refactor-todo] move this to secondary init
 #if CONFIG_APPTRACE_ENABLE
@@ -273,7 +283,7 @@ static void IRAM_ATTR do_core_init(void)
     assert(flash_ret == ESP_OK);
 }
 
-static void IRAM_ATTR do_secondary_init(void)
+static void do_secondary_init(void)
 {
 #if !CONFIG_ESP_SYSTEM_SINGLE_CORE_MODE
     // The port layer transferred control to this function with other cores 'paused',
@@ -295,14 +305,17 @@ static void IRAM_ATTR do_secondary_init(void)
         for (int i = 0; i < SOC_CPU_CORES_NUM; i++) {
             system_inited &= s_system_inited[i];
         }
-        ets_delay_us(100);
+        esp_rom_delay_us(100);
     }
 #endif
 }
 
-void IRAM_ATTR start_cpu0_default(void)
+static void start_cpu0_default(void)
 {
+
     ESP_EARLY_LOGI(TAG, "Pro cpu start user code");
+    int cpu_freq = esp_clk_cpu_freq();
+    ESP_EARLY_LOGI(TAG, "cpu freq: %d", cpu_freq);
 
     // Display information about the current running image.
     if (LOG_LOCAL_LEVEL >= ESP_LOG_INFO) {
@@ -348,42 +361,25 @@ void IRAM_ATTR start_cpu0_default(void)
     s_system_full_inited = true;
 #endif
 
-    start_app();
+    esp_startup_start_app();
     while (1);
 }
 
 IRAM_ATTR ESP_SYSTEM_INIT_FN(init_components0, BIT(0))
 {
-#if defined(CONFIG_PM_ENABLE) && defined(CONFIG_ESP_CONSOLE_UART)
-    const int uart_clk_freq = REF_CLK_FREQ;
-    /* When DFS is enabled, use REFTICK as UART clock source */
-    CLEAR_PERI_REG_MASK(UART_CONF0_REG(CONFIG_ESP_CONSOLE_UART_NUM), UART_TICK_REF_ALWAYS_ON);
-    uart_div_modify(CONFIG_ESP_CONSOLE_UART_NUM, (uart_clk_freq << 4) / CONFIG_ESP_CONSOLE_UART_BAUDRATE);
-#endif // CONFIG_ESP_CONSOLE_UART_NONE
+    esp_timer_init();
 
-#ifdef CONFIG_PM_ENABLE
+#if defined(CONFIG_PM_ENABLE)
     esp_pm_impl_init();
-#ifdef CONFIG_PM_DFS_INIT_AUTO
-    int xtal_freq = (int) rtc_clk_xtal_freq_get();
-    esp_pm_config_esp32_t cfg = {
-        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = xtal_freq,
-    };
-    esp_pm_configure(&cfg);
-#endif //CONFIG_PM_DFS_INIT_AUTO
-#endif //CONFIG_PM_ENABLE
+#endif
 
-#if CONFIG_IDF_TARGET_ESP32
-#if CONFIG_ESP32_ENABLE_COREDUMP
+#if CONFIG_ESP_COREDUMP_ENABLE
     esp_core_dump_init();
 #endif
-#endif
 
-#if CONFIG_IDF_TARGET_ESP32
-#if CONFIG_ESP32_WIFI_SW_COEXIST_ENABLE
+#if CONFIG_SW_COEXIST_ENABLE
     esp_coex_adapter_register(&g_coex_adapter_funcs);
     coex_pre_init();
-#endif
 #endif
 
 #ifdef CONFIG_BOOTLOADER_EFUSE_SECURE_VERSION_EMULATE
@@ -399,4 +395,3 @@ IRAM_ATTR ESP_SYSTEM_INIT_FN(init_components0, BIT(0))
     _Unwind_SetEnableExceptionFdeSorting(0);
 #endif // CONFIG_COMPILER_CXX_EXCEPTIONS
 }
-

@@ -1,5 +1,13 @@
 idf_build_get_property(idf_target IDF_TARGET)
 
+# remove these when wifi support is ready on esp32-s3
+if(${idf_target} STREQUAL "esp32s3")
+    idf_component_register(INCLUDE_DIRS "include"
+                           REQUIRES esp_event
+                           PRIV_REQUIRES wpa_supplicant nvs_flash esp_netif)
+    return()
+endif()
+
 if(CONFIG_ESP32_NO_BLOBS OR CONFIG_ESP32S2_NO_BLOBS)
     set(link_binary_libs 0)
     set(ldfragments)
@@ -27,7 +35,7 @@ idf_component_register(SRCS "src/coexist.c"
                             "${idf_target}/esp_adapter.c"
                     INCLUDE_DIRS "include" "${idf_target}/include"
                     REQUIRES esp_event
-                    PRIV_REQUIRES wpa_supplicant nvs_flash esp_netif ${extra_priv_requires}
+                    PRIV_REQUIRES esp_timer esp_pm wpa_supplicant nvs_flash esp_netif ${extra_priv_requires}
                     LDFRAGMENTS "${ldfragments}")
 
 idf_build_get_property(build_dir BUILD_DIR)
@@ -41,24 +49,19 @@ if(link_binary_libs)
     set(blobs coexist core espnow mesh net80211 pp rtc smartconfig ${phy})
 
     foreach(blob ${blobs})
-        add_library(${blob} STATIC IMPORTED)
-        set_property(TARGET ${blob} PROPERTY IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/lib/${target_name}/lib${blob}.a)
+        add_prebuilt_library(${blob} "${CMAKE_CURRENT_SOURCE_DIR}/lib/${target_name}/lib${blob}.a"
+                            REQUIRES ${COMPONENT_NAME})
+        set(blob_reqs ${blobs})
+        list(REMOVE_ITEM blob_reqs ${blob}) # remove itself from requirements
+        set_property(TARGET ${blob} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${blob_reqs})
         target_link_libraries(${COMPONENT_LIB} PUBLIC ${blob})
-
-        foreach(_blob ${blobs})
-            if(NOT _blob STREQUAL ${blob})
-                set_property(TARGET ${blob} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${_blob})
-            endif()
-        endforeach()
-
-        set_property(TARGET ${blob} APPEND PROPERTY INTERFACE_LINK_LIBRARIES ${COMPONENT_LIB})
     endforeach()
 endif()
 
 if(CONFIG_ESP32_PHY_INIT_DATA_IN_PARTITION)
     idf_component_get_property(esp_common_dir esp_common COMPONENT_DIR)
     partition_table_get_partition_info(phy_partition_offset "--partition-type data --partition-subtype phy" "offset")
-    
+
     if(CONFIG_ESP32_SUPPORT_MULTIPLE_PHY_INIT_DATA_BIN)
         set(phy_init_data_bin "${CMAKE_CURRENT_SOURCE_DIR}/phy_multiple_init_data.bin")
     else()

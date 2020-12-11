@@ -24,6 +24,7 @@
 #include "bootloader_flash_config.h"
 #include "bootloader_mem.h"
 #include "bootloader_console.h"
+#include "bootloader_flash_priv.h"
 
 #include "soc/cpu.h"
 #include "soc/dport_reg.h"
@@ -35,12 +36,11 @@
 #include "soc/spi_periph.h"
 
 #include "esp32/rom/cache.h"
-#include "esp32/rom/efuse.h"
-#include "esp32/rom/ets_sys.h"
 #include "esp_rom_gpio.h"
+#include "esp_rom_efuse.h"
+#include "esp_rom_sys.h"
 #include "esp32/rom/spi_flash.h"
 #include "esp32/rom/rtc.h"
-#include "esp32/rom/uart.h"
 
 static const char *TAG = "boot.esp32";
 
@@ -53,27 +53,19 @@ static const char *TAG = "boot.esp32";
 
 void bootloader_configure_spi_pins(int drv)
 {
-    uint32_t chip_ver = REG_GET_FIELD(EFUSE_BLK0_RDATA3_REG, EFUSE_RD_CHIP_VER_PKG);
-    uint32_t pkg_ver = chip_ver & 0x7;
+    uint32_t pkg_ver = bootloader_common_get_chip_ver_pkg();
 
-    if (pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5) {
-        // For ESP32D2WD the SPI pins are already configured
-        // flash clock signal should come from IO MUX.
-        PIN_FUNC_SELECT(PERIPHS_IO_MUX_SD_CLK_U, FUNC_SD_CLK_SPICLK);
-        SET_PERI_REG_BITS(PERIPHS_IO_MUX_SD_CLK_U, FUN_DRV, drv, FUN_DRV_S);
-    } else if (pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2) {
-        // For ESP32PICOD2 the SPI pins are already configured
-        // flash clock signal should come from IO MUX.
-        PIN_FUNC_SELECT(PERIPHS_IO_MUX_SD_CLK_U, FUNC_SD_CLK_SPICLK);
-        SET_PERI_REG_BITS(PERIPHS_IO_MUX_SD_CLK_U, FUN_DRV, drv, FUN_DRV_S);
-    } else if (pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4) {
-        // For ESP32PICOD4 the SPI pins are already configured
+    if (pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32D2WDQ5 ||
+        pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD2 ||
+        pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOD4 ||
+        pkg_ver == EFUSE_RD_CHIP_VER_PKG_ESP32PICOV302) {
+        // For ESP32D2WD or ESP32-PICO series,the SPI pins are already configured
         // flash clock signal should come from IO MUX.
         PIN_FUNC_SELECT(PERIPHS_IO_MUX_SD_CLK_U, FUNC_SD_CLK_SPICLK);
         SET_PERI_REG_BITS(PERIPHS_IO_MUX_SD_CLK_U, FUN_DRV, drv, FUN_DRV_S);
     } else {
-        const uint32_t spiconfig = ets_efuse_get_spiconfig();
-        if (spiconfig == EFUSE_SPICONFIG_SPI_DEFAULTS) {
+        const uint32_t spiconfig = esp_rom_efuse_get_flash_gpio_info();
+        if (spiconfig == ESP_ROM_EFUSE_FLASH_DEFAULT_SPI) {
             esp_rom_gpio_connect_out_signal(FLASH_CS_IO, SPICS0_OUT_IDX, 0, 0);
             esp_rom_gpio_connect_out_signal(FLASH_SPIQ_IO, SPIQ_OUT_IDX, 0, 0);
             esp_rom_gpio_connect_in_signal(FLASH_SPIQ_IO, SPIQ_IN_IDX, 0);
@@ -260,8 +252,8 @@ static esp_err_t bootloader_init_spi_flash(void)
 {
     bootloader_init_flash_configure();
 #ifndef CONFIG_SPI_FLASH_ROM_DRIVER_PATCH
-    const uint32_t spiconfig = ets_efuse_get_spiconfig();
-    if (spiconfig != EFUSE_SPICONFIG_SPI_DEFAULTS && spiconfig != EFUSE_SPICONFIG_HSPI_DEFAULTS) {
+    const uint32_t spiconfig = esp_rom_efuse_get_flash_gpio_info();
+    if (spiconfig != ESP_ROM_EFUSE_FLASH_DEFAULT_SPI && spiconfig != ESP_ROM_EFUSE_FLASH_DEFAULT_HSPI) {
         ESP_LOGE(TAG, "SPI flash pins are overridden. Enable CONFIG_SPI_FLASH_ROM_DRIVER_PATCH in menuconfig");
         return ESP_FAIL;
     }
@@ -275,6 +267,8 @@ static esp_err_t bootloader_init_spi_flash(void)
 
     print_flash_info(&bootloader_image_hdr);
     update_flash_config(&bootloader_image_hdr);
+    //ensure the flash is write-protected
+    bootloader_enable_wp();
     return ESP_OK;
 }
 
@@ -357,18 +351,6 @@ static void bootloader_check_wdt_reset(void)
 #endif
     }
     wdt_reset_cpu0_info_enable();
-}
-
-void abort(void)
-{
-#if !CONFIG_ESP_SYSTEM_PANIC_SILENT_REBOOT
-    ets_printf("abort() was called at PC 0x%08x\r\n", (intptr_t)__builtin_return_address(0) - 3);
-#endif
-    if (esp_cpu_in_ocd_debug_mode()) {
-        __asm__("break 0,0");
-    }
-    while (1) {
-    }
 }
 
 esp_err_t bootloader_init(void)
