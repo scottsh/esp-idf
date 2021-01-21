@@ -19,7 +19,7 @@
 #
 
 from __future__ import division, print_function
-from future.moves.itertools import zip_longest
+from itertools import zip_longest
 from builtins import int, range, bytes
 from io import open
 import sys

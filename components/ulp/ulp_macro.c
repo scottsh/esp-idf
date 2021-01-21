@@ -19,7 +19,7 @@
 #include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_log.h"
-#include "esp32/ulp.h"
+#include "esp32s2/ulp.h"
 #include "ulp_private.h"
 
 #include "soc/soc.h"
@@ -144,7 +144,7 @@ static esp_err_t do_single_reloc(ulp_insn_t* program, uint32_t load_addr,
             assert(insn->b.opcode == OPCODE_BRANCH
                     && "branch macro was applied to a non-branch instruction");
             switch (insn->b.sub_opcode) {
-                case SUB_OPCODE_B:
+                case SUB_OPCODE_BR:
                 case SUB_OPCODE_BS:{
                     int32_t offset = ((int32_t) label_info.addr) - ((int32_t) the_reloc.addr);
                     uint32_t abs_offset = abs(offset);
@@ -226,19 +226,20 @@ esp_err_t ulp_process_macros_and_load(uint32_t load_addr, const ulp_insn_t* prog
     reloc_info_t* cur_reloc = reloc_info;
     while (read_ptr < end) {
         ulp_insn_t r_insn = *read_ptr;
+//        ESP_LOGE(TAG, "Full Opcode=0x%08X", r_insn.instruction);
         if (r_insn.macro.opcode == OPCODE_MACRO) {
             switch (r_insn.macro.sub_opcode) {
                 case SUB_OPCODE_MACRO_LABEL:
+//                    ESP_LOGE(TAG, "Macro Label Decode label=0x%08X  unused=0x%08X  subopcode=0x%08X  opcode=0x%08X", r_insn.macro.label, r_insn.macro.unused, r_insn.macro.sub_opcode, r_insn.macro.opcode);
                     *cur_reloc = RELOC_INFO_LABEL(r_insn.macro.label,
                             cur_insn_addr);
+//                    ESP_LOGE(TAG, "Creating label %d", r_insn.macro.label);
                     break;
                 case SUB_OPCODE_MACRO_BRANCH:
+//                    ESP_LOGE(TAG, "Macro branch Decode label=0x%08X  unused=0x%08X  subopcode=0x%08X  opcode=0x%08X", r_insn.macro.label, r_insn.macro.unused, r_insn.macro.sub_opcode, r_insn.macro.opcode);
                     *cur_reloc = RELOC_INFO_BRANCH(r_insn.macro.label,
                             cur_insn_addr);
-                    break;
-                case SUB_OPCODE_MACRO_LABELPC:
-                    *cur_reloc = RELOC_INFO_LABELPC(r_insn.macro.label,
-                            cur_insn_addr);
+//                    ESP_LOGE(TAG, "Creating branch %d", r_insn.macro.label);
                     break;
                 default:
                     assert(0 && "invalid sub_opcode for macro insn");
@@ -264,9 +265,11 @@ esp_err_t ulp_process_macros_and_load(uint32_t load_addr, const ulp_insn_t* prog
     cur_reloc = reloc_info;
     while(cur_reloc < reloc_end) {
         reloc_info_t label_info = *cur_reloc;
+//        ESP_LOGE(TAG, "Set label %d", label_info.label);
         assert(label_info.type == RELOC_TYPE_LABEL);
         ++cur_reloc;
         while (cur_reloc < reloc_end) {
+//            ESP_LOGE(TAG, "Reloc entry type=%d, label=%d", cur_reloc->type, cur_reloc->label);
             if (cur_reloc->type == RELOC_TYPE_LABEL) {
                 if(cur_reloc->label == label_info.label) {
                     ESP_LOGE(TAG, "duplicate label definition: %d",

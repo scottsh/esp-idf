@@ -29,10 +29,7 @@ void ulp_riscv_wakeup_main_processor(void)
 void ulp_riscv_shutdown(void)
 {
     /* Setting the delay time after RISCV recv `DONE` signal, Ensure that action `RESET` can be executed in time. */
-    REG_SET_FIELD(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_SHUT_2_CLK_DIS, 0x3F);
-
-    /* Set the done signal to go to the RISCV instead of the ULP_FSM */
-    SET_PERI_REG_MASK(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_DONE_FORCE);
+//    REG_SET_FIELD(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_SHUT_2_CLK_DIS, 0x7F);
 
     /* suspends the ulp operation*/
     SET_PERI_REG_MASK(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_DONE);

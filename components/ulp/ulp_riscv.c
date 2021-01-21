@@ -31,7 +31,10 @@
 
 esp_err_t ulp_riscv_run(void)
 {
-    /* Reset COCPU when power on. */
+    /* Set the done signal to go to the RISCV instead of the ULP_FSM */
+    SET_PERI_REG_MASK(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_DONE_FORCE);
+
+        /* Reset COCPU when power on. */
     SET_PERI_REG_MASK(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_CLK_FO);
     SET_PERI_REG_MASK(RTC_CNTL_COCPU_CTRL_REG, RTC_CNTL_COCPU_SHUT_RESET_EN);
     esp_rom_delay_us(20);
